@@ -151,23 +151,36 @@ private fun CodeBlockCard(language: String, code: String) {
                     fontSize = 11.sp,
                     fontWeight = FontWeight.SemiBold
                 )
-                IconButton(
-                    onClick = {
-                        clipboard.setText(AnnotatedString(code))
-                        copied = true
-                        MainScope().launch {
-                            delay(1600)
-                            copied = false
-                        }
-                    },
-                    modifier = Modifier.size(32.dp)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    Icon(
-                        imageVector = if (copied) Icons.Default.Check else Icons.Default.ContentCopy,
-                        contentDescription = if (copied) "Code copied" else "Copy code",
-                        tint = if (copied) EmeraldSuccess else Color(0xFFCBD5E1),
-                        modifier = Modifier.size(16.dp)
-                    )
+                    if (copied) {
+                        Text(
+                            text = "Code copied",
+                            color = EmeraldSuccess,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                    IconButton(
+                        onClick = {
+                            clipboard.setText(AnnotatedString(code))
+                            copied = true
+                            MainScope().launch {
+                                delay(1600)
+                                copied = false
+                            }
+                        },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (copied) Icons.Default.Check else Icons.Default.ContentCopy,
+                            contentDescription = if (copied) "Code copied" else "Copy code only",
+                            tint = if (copied) EmeraldSuccess else Color(0xFFCBD5E1),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
                 }
             }
 

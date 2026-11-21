@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import android.speech.tts.TextToSpeech
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -20,6 +21,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -34,15 +36,23 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.data.model.AcademicProfile
+import com.example.data.model.AiVoicePreset
 import com.example.data.model.AppSettings
 import com.example.data.model.LanguagePreference
 import com.example.data.model.ThemeMode
+import java.util.Locale
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -52,15 +62,34 @@ fun SettingsScreen(
     userEmail: String?,
     onBack: () -> Unit,
     onUpdateTheme: (ThemeMode) -> Unit,
+    onUpdateOfflineMode: (Boolean) -> Unit,
     onUpdateLanguage: (LanguagePreference) -> Unit,
     onUpdateAcademicProfile: (AcademicProfile) -> Unit,
     onUpdateTemperature: (Float) -> Unit,
     onUpdateAutoSpeak: (Boolean) -> Unit,
     onUpdateVoiceLang: (String) -> Unit,
     onUpdateSpeechRate: (Float) -> Unit,
+    onSelectAiVoice: (AiVoicePreset) -> Unit,
+    onUpdateTtsPitch: (Float) -> Unit,
     onSignOut: () -> Unit
 ) {
     BackHandler { onBack() }
+
+    val context = LocalContext.current
+    var previewTtsReady by remember { mutableStateOf(false) }
+    val previewTts = remember {
+        var instance: TextToSpeech? = null
+        instance = TextToSpeech(context.applicationContext) { status ->
+            previewTtsReady = status == TextToSpeech.SUCCESS
+        }
+        instance
+    }
+    DisposableEffect(previewTts) {
+        onDispose {
+            previewTts.stop()
+            previewTts.shutdown()
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -102,6 +131,33 @@ fun SettingsScreen(
                             modifier = Modifier.testTag("theme_chip_${mode.name}")
                         )
                     }
+                }
+            }
+
+            // Offline Mode
+            SettingsSectionCard(title = "Offline Mode") {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Work Offline (Zero Internet)",
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Text(
+                            text = "Answer questions from your local HSC Knowledge & Flashcard decks, study flashcards, and track your Progress Dashboard offline.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = settings.offlineModeEnabled,
+                        onCheckedChange = onUpdateOfflineMode,
+                        modifier = Modifier.testTag("settings_offline_switch")
+                    )
                 }
             }
 
@@ -199,6 +255,70 @@ fun SettingsScreen(
                     onValueChange = onUpdateSpeechRate,
                     valueRange = 0.6f..1.6f
                 )
+
+                Spacer(modifier = Modifier.height(12.dp))
+                val activeVoice = AiVoicePreset.fromId(settings.aiVoiceName)
+                Text(
+                    text = "AI Voice Persona (${activeVoice.displayName} — ${activeVoice.toneDesc})",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    AiVoicePreset.entries.forEach { preset ->
+                        FilterChip(
+                            selected = activeVoice == preset,
+                            onClick = { onSelectAiVoice(preset) },
+                            label = { Text(preset.displayName) },
+                            modifier = Modifier.testTag("settings_ai_voice_${preset.name}")
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+                val pitchDisplay = ((settings.ttsPitch * 100).roundToInt() / 100f)
+                Text(
+                    text = "AI Voice Pitch: $pitchDisplay",
+                    style = MaterialTheme.typography.labelMedium
+                )
+                Slider(
+                    value = settings.ttsPitch,
+                    onValueChange = onUpdateTtsPitch,
+                    valueRange = 0.7f..1.4f
+                )
+
+                Spacer(modifier = Modifier.height(6.dp))
+                OutlinedButton(
+                    onClick = {
+                        if (previewTtsReady) {
+                            val locale = if (settings.voiceInputLang.startsWith("bn", ignoreCase = true)) {
+                                Locale("bn", "BD")
+                            } else {
+                                Locale.US
+                            }
+                            previewTts.language = locale
+                            previewTts.setSpeechRate(settings.speechRate)
+                            previewTts.setPitch(settings.ttsPitch)
+                            previewTts.speak(
+                                "Hello! This is ${activeVoice.displayName}, your Study Update AI tutor voice.",
+                                TextToSpeech.QUEUE_FLUSH,
+                                null,
+                                "voice_preview_${System.currentTimeMillis()}"
+                            )
+                        }
+                    },
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.testTag("test_ai_voice_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.VolumeUp,
+                        contentDescription = null
+                    )
+                    Text("  Test AI Voice (${activeVoice.displayName})")
+                }
             }
 
             // Creativity / Temperature

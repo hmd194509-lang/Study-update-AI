@@ -22,13 +22,24 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Analytics
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.AutoStories
 import androidx.compose.material.icons.filled.ChatBubbleOutline
+import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.EventAvailable
+import androidx.compose.material.icons.filled.HourglassTop
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Style
+import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material3.Switch
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -37,6 +48,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -52,6 +64,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -67,6 +80,14 @@ import com.example.ui.theme.VioletSecondary
 
 enum class AppRoute {
     CHAT,
+    NOTEBOOK,
+    STUDIO,
+    HSC_HUB,
+    FLASHCARDS,
+    PROGRESS,
+    STUDY_TIMER,
+    ADMISSION,
+    FOCUS_LOCK,
     SETTINGS,
     API_CONFIG
 }
@@ -75,10 +96,14 @@ enum class AppRoute {
 fun ChatDrawerContent(
     sessionsState: UiState<List<ChatSession>>,
     activeSessionId: String?,
+    isTemporaryChat: Boolean,
+    isOfflineEffective: Boolean,
     currentRoute: AppRoute,
     settings: AppSettings,
     userEmail: String?,
     onNewChat: () -> Unit,
+    onStartTemporaryChat: () -> Unit,
+    onToggleOfflineMode: (Boolean) -> Unit,
     onSelectSession: (ChatSession) -> Unit,
     onRenameSession: (String, String) -> Unit,
     onDeleteSession: (String) -> Unit,
@@ -90,7 +115,7 @@ fun ChatDrawerContent(
     var renameInput by remember { mutableStateOf("") }
 
     ModalDrawerSheet(
-        modifier = Modifier.width(304.dp),
+        modifier = Modifier.width(308.dp),
         drawerContainerColor = MaterialTheme.colorScheme.surface
     ) {
         Column(
@@ -100,15 +125,15 @@ fun ChatDrawerContent(
                 .navigationBarsPadding()
                 .padding(horizontal = 14.dp, vertical = 12.dp)
         ) {
-            // Brand Header
+            // Gemini-style Brand Header
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 6.dp)
             ) {
                 Box(
                     modifier = Modifier
-                        .size(42.dp)
-                        .clip(RoundedCornerShape(12.dp))
+                        .size(40.dp)
+                        .clip(CircleShape)
                         .background(
                             Brush.linearGradient(
                                 listOf(IndigoPrimary, VioletSecondary, CyanTertiary)
@@ -120,7 +145,7 @@ fun ChatDrawerContent(
                         imageVector = Icons.Default.AutoAwesome,
                         contentDescription = "Study Update AI Logo",
                         tint = Color.White,
-                        modifier = Modifier.size(22.dp)
+                        modifier = Modifier.size(20.dp)
                     )
                 }
                 Spacer(modifier = Modifier.width(12.dp))
@@ -131,49 +156,154 @@ fun ChatDrawerContent(
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "Your Personal AI Assistant",
+                        text = "Gemini Powered Assistant",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
-            // New Chat Button
-            Button(
-                onClick = {
-                    onNewChat()
-                    onNavigate(AppRoute.CHAT)
-                },
-                shape = RoundedCornerShape(14.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(48.dp)
-                    .testTag("new_chat_button")
+            // New Chat + Temporary Chat Buttons
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth()
             ) {
-                Icon(
-                    imageVector = Icons.Default.Add,
-                    contentDescription = null,
-                    modifier = Modifier.size(20.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "New Chat",
-                    style = MaterialTheme.typography.labelLarge
-                )
+                Button(
+                    onClick = {
+                        onNewChat()
+                        onNavigate(AppRoute.CHAT)
+                    },
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary
+                    ),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(46.dp)
+                        .testTag("new_chat_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("New Chat", style = MaterialTheme.typography.labelLarge)
+                }
+
+                OutlinedButton(
+                    onClick = {
+                        onStartTemporaryChat()
+                        onNavigate(AppRoute.CHAT)
+                    },
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier
+                        .height(46.dp)
+                        .testTag("temp_chat_drawer_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.VisibilityOff,
+                        contentDescription = "Temporary Chat",
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(10.dp))
+
+            // Feature Hubs
+            DrawerFooterItem(
+                icon = Icons.Default.AutoStories,
+                label = "Gemini Notebook & PDF Podcast",
+                selected = currentRoute == AppRoute.NOTEBOOK,
+                onClick = { onNavigate(AppRoute.NOTEBOOK) },
+                testTag = "drawer_notebook_button"
+            )
+            DrawerFooterItem(
+                icon = Icons.Default.Image,
+                label = "Picture & Video Studio",
+                selected = currentRoute == AppRoute.STUDIO,
+                onClick = { onNavigate(AppRoute.STUDIO) },
+                testTag = "drawer_studio_button"
+            )
+            DrawerFooterItem(
+                icon = Icons.Default.School,
+                label = "HSC & Admission Lab",
+                selected = currentRoute == AppRoute.HSC_HUB,
+                onClick = { onNavigate(AppRoute.HSC_HUB) },
+                testTag = "drawer_hsc_button"
+            )
+            DrawerFooterItem(
+                icon = Icons.Default.Style,
+                label = "Study Flashcards",
+                selected = currentRoute == AppRoute.FLASHCARDS,
+                onClick = { onNavigate(AppRoute.FLASHCARDS) },
+                testTag = "drawer_flashcards_button"
+            )
+            DrawerFooterItem(
+                icon = Icons.Default.Analytics,
+                label = "Progress Dashboard",
+                selected = currentRoute == AppRoute.PROGRESS,
+                onClick = { onNavigate(AppRoute.PROGRESS) },
+                testTag = "drawer_progress_button"
+            )
+            DrawerFooterItem(
+                icon = Icons.Default.HourglassTop,
+                label = "Study Timer (Pomodoro)",
+                selected = currentRoute == AppRoute.STUDY_TIMER,
+                onClick = { onNavigate(AppRoute.STUDY_TIMER) },
+                testTag = "drawer_study_timer_button"
+            )
+            DrawerFooterItem(
+                icon = Icons.Default.EventAvailable,
+                label = "Admission Circulars & Links",
+                selected = currentRoute == AppRoute.ADMISSION,
+                onClick = { onNavigate(AppRoute.ADMISSION) },
+                testTag = "drawer_admission_button"
+            )
+            DrawerFooterItem(
+                icon = Icons.Default.Timer,
+                label = "App Time Limit & Unlock",
+                selected = currentRoute == AppRoute.FOCUS_LOCK,
+                onClick = { onNavigate(AppRoute.FOCUS_LOCK) },
+                testTag = "drawer_focus_button"
+            )
+
+            // Offline Mode Quick Toggle
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 10.dp, vertical = 4.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.CloudOff,
+                    contentDescription = null,
+                    tint = if (isOfflineEffective) AmberWarning else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(
+                    text = if (settings.offlineModeEnabled) "Offline Mode (On)" else "Offline Mode",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.weight(1f)
+                )
+                Switch(
+                    checked = settings.offlineModeEnabled,
+                    onCheckedChange = onToggleOfflineMode,
+                    modifier = Modifier.testTag("drawer_offline_switch")
+                )
+            }
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
             // Search History
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
-                placeholder = { Text("Search chats...", style = MaterialTheme.typography.bodyMedium) },
+                placeholder = { Text("Search chats...", style = MaterialTheme.typography.bodySmall) },
                 leadingIcon = {
                     Icon(
                         imageVector = Icons.Default.Search,
@@ -188,10 +318,10 @@ fun ChatDrawerContent(
                     .testTag("search_chats_input")
             )
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
             Text(
-                text = "CONVERSATION HISTORY",
+                text = "RECENT CHATS",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp)
@@ -243,7 +373,7 @@ fun ChatDrawerContent(
                         } else {
                             items(filtered, key = { it.id }) { session ->
                                 val isSelected =
-                                    currentRoute == AppRoute.CHAT && session.id == activeSessionId
+                                    !isTemporaryChat && currentRoute == AppRoute.CHAT && session.id == activeSessionId
                                 Surface(
                                     shape = RoundedCornerShape(12.dp),
                                     color = if (isSelected) {
@@ -268,7 +398,7 @@ fun ChatDrawerContent(
                                             imageVector = Icons.Default.ChatBubbleOutline,
                                             contentDescription = null,
                                             tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                            modifier = Modifier.size(17.dp)
+                                            modifier = Modifier.size(16.dp)
                                         )
                                         Spacer(modifier = Modifier.width(8.dp))
                                         Text(
@@ -284,24 +414,24 @@ fun ChatDrawerContent(
                                                 renameTarget = session
                                                 renameInput = session.title
                                             },
-                                            modifier = Modifier.size(32.dp)
+                                            modifier = Modifier.size(30.dp)
                                         ) {
                                             Icon(
                                                 imageVector = Icons.Default.Edit,
                                                 contentDescription = "Rename conversation",
                                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                modifier = Modifier.size(16.dp)
+                                                modifier = Modifier.size(15.dp)
                                             )
                                         }
                                         IconButton(
                                             onClick = { onDeleteSession(session.id) },
-                                            modifier = Modifier.size(32.dp)
+                                            modifier = Modifier.size(30.dp)
                                         ) {
                                             Icon(
                                                 imageVector = Icons.Default.DeleteOutline,
                                                 contentDescription = "Delete conversation",
                                                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                modifier = Modifier.size(16.dp)
+                                                modifier = Modifier.size(15.dp)
                                             )
                                         }
                                     }
@@ -312,9 +442,9 @@ fun ChatDrawerContent(
                 }
             }
 
-            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+            HorizontalDivider(modifier = Modifier.padding(vertical = 6.dp))
 
-            // Settings Row
+            // Settings & API Config
             DrawerFooterItem(
                 icon = Icons.Default.Settings,
                 label = "Settings",
@@ -323,11 +453,10 @@ fun ChatDrawerContent(
                 testTag = "drawer_settings_button"
             )
 
-            // API Config Row with live key/engine status dot
             val keyHealthy = !settings.useCustomApiKey || !settings.maskedCustomApiKey.isNullOrBlank()
             DrawerFooterItem(
                 icon = Icons.Default.Key,
-                label = "API Configuration",
+                label = "API Configuration & Key Link",
                 selected = currentRoute == AppRoute.API_CONFIG,
                 onClick = { onNavigate(AppRoute.API_CONFIG) },
                 testTag = "drawer_api_config_button",
@@ -351,7 +480,7 @@ fun ChatDrawerContent(
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(12.dp))
                     .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f))
-                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                    .padding(horizontal = 12.dp, vertical = 6.dp)
             ) {
                 Text(
                     text = userEmail ?: "Signed in",
@@ -407,7 +536,7 @@ fun ChatDrawerContent(
 
 @Composable
 private fun DrawerFooterItem(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: ImageVector,
     label: String,
     selected: Boolean,
     onClick: () -> Unit,
@@ -430,19 +559,21 @@ private fun DrawerFooterItem(
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 9.dp)
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = null,
                 tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(20.dp)
+                modifier = Modifier.size(19.dp)
             )
-            Spacer(modifier = Modifier.width(12.dp))
+            Spacer(modifier = Modifier.width(10.dp))
             Text(
                 text = label,
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
             )
             trailing?.invoke()

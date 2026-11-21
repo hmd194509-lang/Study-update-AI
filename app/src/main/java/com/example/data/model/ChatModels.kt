@@ -13,10 +13,10 @@ enum class StudyMode(
     val shortDesc: String
 ) {
     GENERAL("Personal AI", "সাধারণ সহায়তা", "General Q&A, math, ideas & daily tasks"),
-    HSC_PHYSICS("HSC Physics", "পদার্থবিজ্ঞান", "Formulas, CQ, MCQ & derivations"),
-    HSC_CHEMISTRY("HSC Chemistry", "রসায়ন", "Reactions, organic & stoichiometry"),
+    HSC_PHYSICS("HSC Physics", "পদার্থবিজ্ঞান", "Formulas, CQ, MCQ & labeled diagrams"),
+    HSC_CHEMISTRY("HSC Chemistry", "রসায়ন", "Reactions, organic, formulas & diagrams"),
     HSC_MATH("HSC Math", "উচ্চতর গণিত", "Step-by-step calculus, vectors & algebra"),
-    HSC_BIOLOGY("HSC Biology", "জীববিজ্ঞান", "Botany, zoology, CQ & scientific names"),
+    HSC_BIOLOGY("HSC Biology", "জীববিজ্ঞান", "Botany, zoology, CQ & labeled diagrams"),
     QUIZ("Quiz & Practice", "কুইজ ও অনুশীলন", "Generate MCQs, CQs & mock tests"),
     ROUTINE("Study Routine", "পড়ার রুটিন", "Custom daily & weekly schedules"),
     ADMISSION("Admission Prep", "ভর্তি প্রস্তুতি", "BUET, DU, Medical & GST prep"),
@@ -80,9 +80,12 @@ data class AppSettings(
     val autoSpeak: Boolean = false,
     val voiceInputLang: String = "bn-BD",
     val speechRate: Float = 1.0f,
+    val aiVoiceName: String = "AOEDE",
+    val ttsPitch: Float = 1.0f,
     val selectedModelId: String = DEFAULT_MODEL_ID,
     val useCustomApiKey: Boolean = false,
-    val maskedCustomApiKey: String? = null
+    val maskedCustomApiKey: String? = null,
+    val offlineModeEnabled: Boolean = false
 )
 
 data class GeminiModelOption(
@@ -92,6 +95,7 @@ data class GeminiModelOption(
 )
 
 const val DEFAULT_MODEL_ID = "gemini-3.8-flash"
+const val GEMINI_API_KEY_PORTAL_URL = "https://aistudio.google.com/apikey"
 
 val SUPPORTED_GEMINI_MODELS = listOf(
     GeminiModelOption(
@@ -171,6 +175,221 @@ val AttachmentPayload.idValue: String
         is AttachmentPayload.PdfAttachment -> id
         is AttachmentPayload.TextDocumentAttachment -> id
     }
+
+sealed interface ImageGenUiState {
+    data object Idle : ImageGenUiState
+    data object Loading : ImageGenUiState
+    data class Success(val bitmap: Bitmap, val prompt: String, val caption: String = "") : ImageGenUiState
+    data class Error(val message: String) : ImageGenUiState
+}
+
+sealed interface VideoGenUiState {
+    data object Idle : VideoGenUiState
+    data class Loading(val statusMessage: String) : VideoGenUiState
+    data class Success(val videoFilePath: String, val prompt: String) : VideoGenUiState
+    data class Error(val message: String, val needsApiKey: Boolean = false) : VideoGenUiState
+}
+
+enum class LiveVoiceMode(val label: String) {
+    GEMINI_LIVE("Gemini Live Audio"),
+    BILINGUAL_LOOP("Voice Loop (বাংলা & EN)")
+}
+
+sealed interface LiveVoiceState {
+    data object Idle : LiveVoiceState
+    data object Connecting : LiveVoiceState
+    data class Active(
+        val statusText: String,
+        val isMuted: Boolean = false,
+        val isModelSpeaking: Boolean = false,
+        val lastTranscript: String = ""
+    ) : LiveVoiceState
+    data class Error(val message: String) : LiveVoiceState
+}
+
+data class AppLimitRule(
+    val id: String,
+    val appName: String,
+    val packageName: String = "",
+    val dailyLimitMinutes: Int,
+    val remainingSeconds: Int,
+    val isTrackingActive: Boolean = false,
+    val isLocked: Boolean = false,
+    val lastUpdatedEpochMs: Long = System.currentTimeMillis()
+)
+
+data class UnlockCodeRecord(
+    val id: String,
+    val code: String,
+    val targetAppId: String,
+    val targetAppName: String,
+    val extraMinutes: Int,
+    val reason: String,
+    val recipientContact: String = "",
+    val createdAtMs: Long = System.currentTimeMillis(),
+    val isUsed: Boolean = false
+)
+
+enum class HscSubject(val label: String, val bnLabel: String, val studyMode: StudyMode) {
+    PHYSICS("Physics", "পদার্থবিজ্ঞান", StudyMode.HSC_PHYSICS),
+    CHEMISTRY("Chemistry", "রসায়ন", StudyMode.HSC_CHEMISTRY),
+    BIOLOGY("Biology", "জীববিজ্ঞান", StudyMode.HSC_BIOLOGY)
+}
+
+data class HscTopicCard(
+    val id: String,
+    val subject: HscSubject,
+    val title: String,
+    val bnTitle: String,
+    val levelBadge: String,
+    val keyFormulasOrFacts: List<String>,
+    val admissionTip: String,
+    val explainPrompt: String,
+    val diagramPrompt: String
+)
+
+enum class FlashcardSubject(val label: String, val bnLabel: String) {
+    PHYSICS("Physics", "পদার্থ"),
+    CHEMISTRY("Chemistry", "রসায়ন"),
+    BIOLOGY("Biology", "জীববিজ্ঞান"),
+    MATH("Math", "গণিত"),
+    GENERAL("General", "সাধারণ");
+
+    companion object {
+        fun fromRaw(raw: String?): FlashcardSubject =
+            entries.firstOrNull { it.name == raw } ?: GENERAL
+    }
+}
+
+data class StudyFlashcard(
+    val id: String,
+    val subject: FlashcardSubject,
+    val front: String,
+    val back: String,
+    val admissionNote: String = "",
+    val isMastered: Boolean = false,
+    val reviewCount: Int = 0,
+    val isCustom: Boolean = false,
+    val lastReviewedMs: Long = 0L
+)
+
+data class StudyProgressStats(
+    val totalQuestionsAsked: Int = 0,
+    val offlineQuestionsAnswered: Int = 0,
+    val flashcardsReviewed: Int = 0,
+    val hscTopicsStudied: Int = 0,
+    val studyStreakDays: Int = 0,
+    val lastStudyDayKey: String = "",
+    val subjectQuestionCounts: Map<String, Int> = emptyMap(),
+    val dailyActivityCounts: Map<String, Int> = emptyMap(),
+    val unlockRequestsApproved: Int = 0,
+    val unlockRequestsRejected: Int = 0
+)
+
+data class UnlockReasonEvaluation(
+    val approved: Boolean,
+    val score: Int,
+    val feedback: String,
+    val evaluatedByAi: Boolean
+)
+
+enum class AiVoicePreset(
+    val geminiVoiceId: String,
+    val displayName: String,
+    val toneDesc: String,
+    val defaultPitch: Float
+) {
+    AOEDE("AOEDE", "Aoede", "Warm & Clear (Female)", 1.05f),
+    KORE("KORE", "Kore", "Calm Tutor (Female)", 1.0f),
+    PUCK("PUCK", "Puck", "Upbeat & Friendly (Male)", 0.98f),
+    CHARON("CHARON", "Charon", "Deep & Steady (Male)", 0.85f),
+    FENRIR("FENRIR", "Fenrir", "Crisp & Bold (Male)", 0.90f);
+
+    companion object {
+        fun fromId(id: String?): AiVoicePreset =
+            entries.firstOrNull { it.geminiVoiceId.equals(id, ignoreCase = true) } ?: AOEDE
+    }
+}
+
+data class StudyTimerSession(
+    val id: String,
+    val subject: FlashcardSubject,
+    val durationMinutes: Int,
+    val completedAtMs: Long = System.currentTimeMillis()
+)
+
+enum class AdmissionCategory(val label: String) {
+    MEDICAL("Medical & Dental"),
+    ENGINEERING("Engineering (BUET/CKRUET)"),
+    UNIVERSITY("DU & GST Universities"),
+    AGRI_OTHER("Agri & Special")
+}
+
+data class AdmissionUniversityInfo(
+    val id: String,
+    val name: String,
+    val bnName: String,
+    val category: AdmissionCategory,
+    val circularSchedule: String,
+    val examSchedule: String,
+    val eligibilityAndMarks: String,
+    val registrationUrl: String,
+    val noticeUrl: String,
+    val aiPrepPrompt: String
+)
+
+enum class NotebookSourceType {
+    PDF,
+    NOTE;
+
+    companion object {
+        fun fromRaw(raw: String?): NotebookSourceType =
+            entries.firstOrNull { it.name == raw } ?: NOTE
+    }
+}
+
+data class NotebookSource(
+    val id: String,
+    val title: String,
+    val type: NotebookSourceType,
+    val sizeBytes: Long = 0L,
+    val localFilePath: String = "",
+    val textContent: String = "",
+    val addedAtMs: Long = System.currentTimeMillis()
+)
+
+data class PodcastTurn(
+    val speaker: String, // "HOST_A" or "HOST_B"
+    val speakerName: String,
+    val text: String
+)
+
+data class NotebookMessage(
+    val id: String,
+    val role: MessageRole,
+    val content: String,
+    val createdAtMs: Long = System.currentTimeMillis()
+)
+
+enum class NotebookArtifactType(val label: String, val bnLabel: String) {
+    STUDY_GUIDE("Study Guide", "স্টাডি গাইড"),
+    EXAM_FAQ("Exam FAQ & Formulas", "পরীক্ষার প্রশ্নোত্তর ও সূত্র"),
+    PRACTICE_QUIZ("MCQ Practice Quiz", "এমসিকিউ কুইজ")
+}
+
+data class GeminiNotebook(
+    val id: String,
+    val title: String,
+    val createdAtMs: Long = System.currentTimeMillis(),
+    val updatedAtMs: Long = System.currentTimeMillis(),
+    val sources: List<NotebookSource> = emptyList(),
+    val podcastTitle: String = "",
+    val podcastTurns: List<PodcastTurn> = emptyList(),
+    val studyGuideMarkdown: String = "",
+    val faqMarkdown: String = "",
+    val quizMarkdown: String = "",
+    val messages: List<NotebookMessage> = emptyList()
+)
 
 sealed interface ConnectionTestState {
     data object Idle : ConnectionTestState

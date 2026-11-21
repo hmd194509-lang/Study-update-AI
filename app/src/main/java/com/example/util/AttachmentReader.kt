@@ -6,9 +6,12 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import android.provider.OpenableColumns
 import com.example.data.model.AttachmentPayload
+import com.example.data.model.NotebookSource
+import com.example.data.model.NotebookSourceType
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
+import java.io.File
 import java.util.UUID
 
 object AttachmentReader {
@@ -106,6 +109,75 @@ object AttachmentReader {
                 Result.failure(e)
             }
         }
+
+    suspend fun savePdfForNotebook(context: Context, uri: Uri): Result<NotebookSource> =
+        withContext(Dispatchers.IO) {
+            try {
+                val name = resolveFileName(context, uri) ?: "document_${System.currentTimeMillis()}.pdf"
+                val mime = context.contentResolver.getType(uri).orEmpty()
+                if (mime != "application/pdf" && !name.lowercase().endsWith(".pdf")) {
+                    return@withContext Result.failure(
+                        IllegalArgumentException("Please pick a PDF file (.pdf).")
+                    )
+                }
+                val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                    ?: return@withContext Result.failure(IllegalStateException("Cannot open selected PDF."))
+                if (bytes.isEmpty()) {
+                    return@withContext Result.failure(IllegalArgumentException("Selected PDF file is empty."))
+                }
+                if (bytes.size > MAX_PDF_BYTES) {
+                    return@withContext Result.failure(IllegalArgumentException("PDF exceeds 15 MB limit."))
+                }
+                val dir = File(context.filesDir, "notebook_sources").apply { mkdirs() }
+                val sourceId = "src_${UUID.randomUUID()}"
+                val outFile = File(dir, "$sourceId.pdf")
+                outFile.writeBytes(bytes)
+                Result.success(
+                    NotebookSource(
+                        id = sourceId,
+                        title = name,
+                        type = NotebookSourceType.PDF,
+                        sizeBytes = bytes.size.toLong(),
+                        localFilePath = outFile.absolutePath
+                    )
+                )
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
+
+    suspend fun loadNotebookAttachments(sources: List<NotebookSource>): List<AttachmentPayload> =
+        withContext(Dispatchers.IO) {
+            sources.mapNotNull { src ->
+                when (src.type) {
+                    NotebookSourceType.PDF -> {
+                        val file = File(src.localFilePath)
+                        if (file.exists() && file.length() > 0L && file.length() <= MAX_PDF_BYTES) {
+                            AttachmentPayload.PdfAttachment(
+                                id = src.id,
+                                name = src.title,
+                                bytes = file.readBytes()
+                            )
+                        } else null
+                    }
+                    NotebookSourceType.NOTE -> {
+                        if (src.textContent.isNotBlank()) {
+                            AttachmentPayload.TextDocumentAttachment(
+                                id = src.id,
+                                name = src.title,
+                                textContent = src.textContent.take(MAX_TEXT_CHARS)
+                            )
+                        } else null
+                    }
+                }
+            }
+        }
+
+    fun deleteStoredNotebookSourceFile(source: NotebookSource) {
+        if (source.localFilePath.isNotBlank()) {
+            runCatching { File(source.localFilePath).delete() }
+        }
+    }
 
     private fun resolveFileName(context: Context, uri: Uri): String? {
         return try {

@@ -16,16 +16,21 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.Code
-import androidx.compose.material.icons.filled.PictureAsPdf
-import androidx.compose.material.icons.filled.RecordVoiceOver
+import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.School
+import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material.icons.filled.VideoCameraBack
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -76,11 +81,11 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            // Hero Banner Card
+            // Gemini-style Hero Login Card
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(210.dp)
+                    .height(216.dp)
                     .clip(RoundedCornerShape(28.dp))
             ) {
                 Image(
@@ -95,8 +100,8 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
                         .background(
                             Brush.verticalGradient(
                                 listOf(
-                                    Color.Black.copy(alpha = 0.20f),
-                                    Color(0xFF0F172A).copy(alpha = 0.85f)
+                                    Color.Black.copy(alpha = 0.22f),
+                                    Color(0xFF0A1024).copy(alpha = 0.90f)
                                 )
                             )
                         )
@@ -106,83 +111,93 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
                         .align(Alignment.BottomStart)
                         .padding(20.dp)
                 ) {
-                    Surface(
-                        color = IndigoPrimary.copy(alpha = 0.9f),
-                        shape = RoundedCornerShape(999.dp)
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier
+                                .size(34.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    Brush.linearGradient(listOf(IndigoPrimary, VioletSecondary, CyanTertiary))
+                                )
                         ) {
                             Icon(
                                 imageVector = Icons.Default.AutoAwesome,
                                 contentDescription = null,
                                 tint = Color.White,
-                                modifier = Modifier.size(14.dp)
+                                modifier = Modifier.size(18.dp)
                             )
+                        }
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Surface(
+                            color = Color.White.copy(alpha = 0.14f),
+                            shape = RoundedCornerShape(999.dp)
+                        ) {
                             Text(
-                                text = " Gemini Powered",
+                                text = "GEMINI STYLE • SECURE LOGIN",
                                 color = Color.White,
-                                style = MaterialTheme.typography.labelSmall
+                                style = MaterialTheme.typography.labelSmall,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                             )
                         }
                     }
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
                     Text(
                         text = "Study Update AI",
                         style = MaterialTheme.typography.displaySmall,
                         color = Color.White
                     )
                     Text(
-                        text = "Your Personal AI Assistant",
-                        style = MaterialTheme.typography.titleMedium,
+                        text = "Your Personal AI, HSC Admission & Creative Studio",
+                        style = MaterialTheme.typography.bodyMedium,
                         color = CyanTertiary
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(20.dp))
-
-            Text(
-                text = "HSC Science, Admission Prep, Coding & Daily Productivity in বাংলা & English",
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(18.dp))
 
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 AssistChip(
                     onClick = {},
-                    label = { Text("HSC CQ & MCQ") },
+                    label = { Text("HSC Physics • Chem • Bio") },
                     leadingIcon = { Icon(Icons.Default.School, null, Modifier.size(16.dp)) }
                 )
                 AssistChip(
                     onClick = {},
-                    label = { Text("PDF & Photo AI") },
-                    leadingIcon = { Icon(Icons.Default.PictureAsPdf, null, Modifier.size(16.dp)) }
+                    label = { Text("Picture & Video Gen") },
+                    leadingIcon = { Icon(Icons.Default.Image, null, Modifier.size(16.dp)) }
                 )
                 AssistChip(
                     onClick = {},
-                    label = { Text("বাংলা & English Voice") },
-                    leadingIcon = { Icon(Icons.Default.RecordVoiceOver, null, Modifier.size(16.dp)) }
+                    label = { Text("Live Voice & Voice-to-Text") },
+                    leadingIcon = { Icon(Icons.Default.GraphicEq, null, Modifier.size(16.dp)) }
                 )
                 AssistChip(
                     onClick = {},
-                    label = { Text("Code & Debug") },
-                    leadingIcon = { Icon(Icons.Default.Code, null, Modifier.size(16.dp)) }
+                    label = { Text("Temporary Chat") },
+                    leadingIcon = { Icon(Icons.Default.VisibilityOff, null, Modifier.size(16.dp)) }
+                )
+                AssistChip(
+                    onClick = {},
+                    label = { Text("App Time Limit & Unlock") },
+                    leadingIcon = { Icon(Icons.Default.Timer, null, Modifier.size(16.dp)) }
+                )
+                AssistChip(
+                    onClick = {},
+                    label = { Text("Veo Video Skill") },
+                    leadingIcon = { Icon(Icons.Default.VideoCameraBack, null, Modifier.size(16.dp)) }
                 )
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(20.dp))
 
             Card(
-                shape = RoundedCornerShape(22.dp),
+                shape = RoundedCornerShape(24.dp),
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surface
                 ),
@@ -190,12 +205,27 @@ fun AuthScreen(onAuthSuccess: () -> Unit) {
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(
-                    modifier = Modifier.padding(20.dp),
+                    modifier = Modifier.padding(22.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.Lock,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Sign In to Continue",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(6.dp))
                     Text(
-                        text = "Sign in to sync your conversation history securely across sessions.",
-                        style = MaterialTheme.typography.bodyMedium,
+                        text = "Sync your Study Update AI chats, HSC diagrams, and personal settings securely with your Google account.",
+                        style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center
                     )

@@ -1,5 +1,7 @@
 package com.example.ui.screens
 
+import android.content.Intent
+import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -19,7 +21,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Key
@@ -48,13 +52,17 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.example.data.model.AppSettings
 import com.example.data.model.ConnectionTestState
+import com.example.data.model.GEMINI_API_KEY_PORTAL_URL
 import com.example.data.model.SUPPORTED_GEMINI_MODELS
 import com.example.ui.theme.AmberWarning
 import com.example.ui.theme.EmeraldSuccess
@@ -74,9 +82,13 @@ fun ApiConfigScreen(
 ) {
     BackHandler { onBack() }
 
+    val context = LocalContext.current
+    val clipboard = LocalClipboardManager.current
+
     var apiKeyInput by remember { mutableStateOf("") }
     var showKey by remember { mutableStateOf(false) }
     var saveFeedback by remember { mutableStateOf<Pair<Boolean, String>?>(null) }
+    var linkCopied by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -107,6 +119,65 @@ fun ApiConfigScreen(
                 .padding(16.dp)
                 .widthIn(max = 640.dp)
         ) {
+            // Direct Gemini API Key Link Card
+            Card(
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
+                ),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = "Get Gemini API Key Link",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = GEMINI_API_KEY_PORTAL_URL,
+                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = JetBrainsMonoFamily),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Button(
+                            onClick = {
+                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(GEMINI_API_KEY_PORTAL_URL))
+                                runCatching { context.startActivity(intent) }
+                            },
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.testTag("open_gemini_api_link_button")
+                        ) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.OpenInNew,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Get Gemini API Key")
+                        }
+
+                        OutlinedButton(
+                            onClick = {
+                                clipboard.setText(AnnotatedString(GEMINI_API_KEY_PORTAL_URL))
+                                linkCopied = true
+                            },
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.ContentCopy,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(if (linkCopied) "Copied!" else "Copy Link")
+                        }
+                    }
+                }
+            }
+
             // Connection Status Card
             val isBuiltInActive = !settings.useCustomApiKey
             val isCustomReady = settings.useCustomApiKey && !settings.maskedCustomApiKey.isNullOrBlank()
@@ -218,7 +289,7 @@ fun ApiConfigScreen(
                                 fontWeight = FontWeight.SemiBold
                             )
                             Text(
-                                text = "Optional: supply your personal Google AI Studio key instead of built-in Firebase AI Logic.",
+                                text = "Optional: supply your personal Google AI Studio key (also enables Veo Video Generation).",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
