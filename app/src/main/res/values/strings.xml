@@ -1,0 +1,11 @@
+<resources>
+    <string name="app_name">Study Update AI</string>
+    <string name="app_tagline">Your Personal AI Assistant</string>
+    <string name="sign_in_google">Sign in with Google</string>
+    <string name="new_chat">New Chat</string>
+    <string name="settings_title">Settings</string>
+    <string name="api_config_title">API Configuration</string>
+    <string name="error_empty_response">The model returned an empty response. Please try again.</string>
+    <string name="error_network_timeout">Request timed out after 60 seconds. Please check your connection and retry.</string>
+    <string name="error_mic_permission">Microphone permission is required for voice input.</string>
+</resources>

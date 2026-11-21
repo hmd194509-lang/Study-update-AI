@@ -1,0 +1,6 @@
+{
+  "name": "Study Update AI",
+  "description": "Your Personal AI Assistant for HSC Science, admission prep, coding, research, and bilingual Bengali & English conversations.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,114 @@
+{
+  "entities": {
+    "ChatSession": {
+      "title": "ChatSession",
+      "description": "A user-owned AI conversation session in Study Update AI.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Authenticated owner Firebase UID."
+        },
+        "title": {
+          "type": "string",
+          "description": "Conversation title (1-120 chars)."
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "GENERAL",
+            "HSC_PHYSICS",
+            "HSC_CHEMISTRY",
+            "HSC_MATH",
+            "HSC_BIOLOGY",
+            "QUIZ",
+            "ROUTINE",
+            "ADMISSION",
+            "CODING",
+            "WRITER"
+          ],
+          "description": "Active assistant mode."
+        },
+        "lastMessagePreview": {
+          "type": "string",
+          "description": "Short preview of the most recent message."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when session was created (FieldValue.serverTimestamp())."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when session was last updated (FieldValue.serverTimestamp())."
+        }
+      },
+      "required": ["userId", "title", "mode", "lastMessagePreview", "createdAt", "updatedAt"]
+    },
+    "ChatMessage": {
+      "title": "ChatMessage",
+      "description": "An individual user or AI model message inside a conversation session.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Authenticated owner Firebase UID."
+        },
+        "sessionId": {
+          "type": "string",
+          "description": "Parent ChatSession document ID."
+        },
+        "role": {
+          "type": "string",
+          "enum": ["USER", "MODEL"],
+          "description": "Sender role."
+        },
+        "content": {
+          "type": "string",
+          "description": "Message text content (redacted of any API secrets)."
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "GENERAL",
+            "HSC_PHYSICS",
+            "HSC_CHEMISTRY",
+            "HSC_MATH",
+            "HSC_BIOLOGY",
+            "QUIZ",
+            "ROUTINE",
+            "ADMISSION",
+            "CODING",
+            "WRITER"
+          ],
+          "description": "Assistant mode used for this message."
+        },
+        "attachmentNames": {
+          "type": "array",
+          "description": "Optional list of up to 4 attached file/image names."
+        },
+        "errorFlag": {
+          "type": "boolean",
+          "description": "Whether this message represents an error notice."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when message was created (FieldValue.serverTimestamp())."
+        }
+      },
+      "required": ["userId", "sessionId", "role", "content", "mode", "attachmentNames", "errorFlag", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}/sessions/{sessionId}": {
+      "schema": { "$ref": "#/entities/ChatSession" },
+      "description": "User-scoped conversation sessions."
+    },
+    "/users/{userId}/sessions/{sessionId}/messages/{messageId}": {
+      "schema": { "$ref": "#/entities/ChatMessage" },
+      "description": "Messages belonging to a user's conversation session."
+    }
+  }
+}
