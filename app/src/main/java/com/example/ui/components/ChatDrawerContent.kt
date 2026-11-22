@@ -125,38 +125,21 @@ fun ChatDrawerContent(
                 .navigationBarsPadding()
                 .padding(horizontal = 14.dp, vertical = 12.dp)
         ) {
-            // Gemini-style Brand Header
+            // Study AI Liquid Glass Brand Header
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 6.dp)
             ) {
-                Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(CircleShape)
-                        .background(
-                            Brush.linearGradient(
-                                listOf(IndigoPrimary, VioletSecondary, CyanTertiary)
-                            )
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.AutoAwesome,
-                        contentDescription = "Study Update AI Logo",
-                        tint = Color.White,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
+                StudyAiLiquidLogo(size = 42.dp)
                 Spacer(modifier = Modifier.width(12.dp))
                 Column {
                     Text(
-                        text = "Study Update AI",
+                        text = "Study AI",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "Gemini Powered Assistant",
+                        text = "Personal Study & Creative Assistant",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -216,7 +199,7 @@ fun ChatDrawerContent(
             // Feature Hubs
             DrawerFooterItem(
                 icon = Icons.Default.AutoStories,
-                label = "Gemini Notebook & PDF Podcast",
+                label = "Study AI Notebook & 1GB PDF Podcast",
                 selected = currentRoute == AppRoute.NOTEBOOK,
                 onClick = { onNavigate(AppRoute.NOTEBOOK) },
                 testTag = "drawer_notebook_button"

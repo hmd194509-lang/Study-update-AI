@@ -2,8 +2,11 @@ package com.example.ui.screens
 
 import android.Manifest
 import android.app.Activity
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.os.Bundle
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
@@ -33,6 +36,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
@@ -66,14 +70,18 @@ import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.EventAvailable
+import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.HourglassTop
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MicOff
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.School
 import androidx.compose.material.icons.filled.Share
@@ -87,12 +95,14 @@ import androidx.compose.material.icons.filled.VolumeOff
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -107,6 +117,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -116,6 +127,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
@@ -126,7 +138,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import com.example.data.model.AppSettings
 import com.example.data.model.AttachmentPayload
 import com.example.data.model.ChatMessage
@@ -137,16 +152,23 @@ import com.example.data.model.ThemeMode
 import com.example.data.model.UiState
 import com.example.data.model.displayName
 import com.example.data.model.idValue
+import com.example.ui.components.LiquidGlassIconBadge
+import com.example.ui.components.LiquidGlassSurface
 import com.example.ui.components.MarkdownMessageView
+import com.example.ui.components.StudyAiLiquidLogo
 import com.example.ui.theme.AmberWarning
 import com.example.ui.theme.CyanTertiary
 import com.example.ui.theme.EmeraldSuccess
 import com.example.ui.theme.IndigoPrimary
 import com.example.ui.theme.VioletSecondary
 import com.example.util.AttachmentReader
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
+import java.io.FileOutputStream
 import java.util.Locale
 
 private data class QuickStarter(
@@ -227,6 +249,7 @@ fun ChatScreen(
     onToggleTheme: () -> Unit,
     onSelectMode: (StudyMode) -> Unit,
     onSendMessage: (String, StudyMode?) -> Unit,
+    onSendImageInChat: (String) -> Unit,
     onStopStreaming: () -> Unit,
     onRegenerateLast: () -> Unit,
     onAddAttachment: (AttachmentPayload) -> Unit,
@@ -239,12 +262,15 @@ fun ChatScreen(
     val clipboard = LocalClipboardManager.current
 
     var inputText by remember { mutableStateOf("") }
+    var isImageGenMode by remember { mutableStateOf(false) }
     var isListening by remember { mutableStateOf(false) }
     var partialVoiceText by remember { mutableStateOf("") }
     var showPlusMenu by remember { mutableStateOf(false) }
+    var showThreeDotMenu by remember { mutableStateOf(false) }
     var speakingMessageId by remember { mutableStateOf<String?>(null) }
     var copiedMessageId by remember { mutableStateOf<String?>(null) }
     var copiedCodeOnlyId by remember { mutableStateOf<String?>(null) }
+    var fullscreenImage by remember { mutableStateOf<Pair<Bitmap, String>?>(null) }
 
     val listState = rememberLazyListState()
 
@@ -447,7 +473,8 @@ fun ChatScreen(
             .statusBarsPadding()
             .imePadding()
     ) {
-        // Gemini-Style Minimalist Top Bar
+        // Study AI Top Bar with Liquid Glass Logo, Polished Action Badges & Liquid Glass 3-Dot Menu
+        val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
         Surface(
             color = MaterialTheme.colorScheme.background,
             tonalElevation = 0.dp
@@ -456,7 +483,7 @@ fun ChatScreen(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 6.dp, vertical = 6.dp)
+                    .padding(horizontal = 8.dp, vertical = 6.dp)
             ) {
                 IconButton(
                     onClick = onOpenDrawer,
@@ -464,16 +491,19 @@ fun ChatScreen(
                         .minimumInteractiveComponentSize()
                         .testTag("open_drawer_button")
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Menu,
-                        contentDescription = "Open sidebar"
+                    LiquidGlassIconBadge(
+                        icon = Icons.Default.Menu,
+                        contentDescription = "Open sidebar",
+                        tint = MaterialTheme.colorScheme.onSurface
                     )
                 }
 
-                // Centered Gemini Pill
-                Surface(
+                Spacer(modifier = Modifier.width(6.dp))
+
+                // Centered Study AI Liquid Glass Pill
+                LiquidGlassSurface(
                     shape = RoundedCornerShape(999.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
+                    accentGlow = true,
                     modifier = Modifier
                         .weight(1f)
                         .clip(RoundedCornerShape(999.dp))
@@ -482,81 +512,55 @@ fun ChatScreen(
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.Center,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 10.dp, vertical = 6.dp)
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.AutoAwesome,
-                            contentDescription = null,
-                            tint = IndigoPrimary,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
+                        StudyAiLiquidLogo(size = 26.dp)
+                        Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = if (isTemporaryChat) {
-                                "Temporary • ${settings.selectedModelId}"
+                                "Temporary • Study AI"
                             } else {
-                                activeSession?.title?.take(22) ?: "Gemini • ${activeMode.label}"
+                                activeSession?.title?.take(22) ?: "Study AI • ${activeMode.label}"
                             },
                             style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
 
-                // Temporary Chat Toggle
+                Spacer(modifier = Modifier.width(4.dp))
+
+                // Quick In-Chat Image Skill Toggle
                 IconButton(
-                    onClick = onToggleTemporaryChat,
+                    onClick = { isImageGenMode = !isImageGenMode },
                     modifier = Modifier
                         .minimumInteractiveComponentSize()
-                        .testTag("temporary_chat_toggle_button")
+                        .testTag("in_chat_image_toggle")
                 ) {
-                    Icon(
-                        imageVector = if (isTemporaryChat) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                        contentDescription = if (isTemporaryChat) "Exit Temporary Chat" else "Start Temporary Chat",
-                        tint = if (isTemporaryChat) AmberWarning else MaterialTheme.colorScheme.onSurfaceVariant
+                    LiquidGlassIconBadge(
+                        icon = Icons.Default.Palette,
+                        contentDescription = "Generate picture in chat",
+                        tint = if (isImageGenMode) CyanTertiary else MaterialTheme.colorScheme.primary,
+                        active = isImageGenMode
                     )
                 }
 
-                // Offline Mode Toggle
+                // Quick Live Voice Logo Button
                 IconButton(
-                    onClick = onToggleOfflineMode,
+                    onClick = onOpenLiveVoice,
                     modifier = Modifier
                         .minimumInteractiveComponentSize()
-                        .testTag("offline_mode_topbar_button")
+                        .testTag("topbar_live_voice_button")
                 ) {
-                    Icon(
-                        imageVector = if (isOfflineEffective) Icons.Default.CloudOff else Icons.Default.CloudDone,
-                        contentDescription = if (isOfflineEffective) "Offline Mode Active" else "Switch to Offline Mode",
-                        tint = if (isOfflineEffective) AmberWarning else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-
-                // Progress Dashboard Quick Button
-                IconButton(
-                    onClick = onOpenProgress,
-                    modifier = Modifier
-                        .minimumInteractiveComponentSize()
-                        .testTag("progress_topbar_button")
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Analytics,
-                        contentDescription = "Progress Dashboard",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-
-                // App Time Limit & Unlock Quick Button
-                IconButton(
-                    onClick = onOpenFocusLock,
-                    modifier = Modifier
-                        .minimumInteractiveComponentSize()
-                        .testTag("focus_lock_topbar_button")
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Timer,
-                        contentDescription = "App Time Limits & Unlock",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    LiquidGlassIconBadge(
+                        icon = Icons.Default.GraphicEq,
+                        contentDescription = "Live Voice Chat",
+                        tint = VioletSecondary,
+                        active = true
                     )
                 }
 
@@ -565,29 +569,198 @@ fun ChatScreen(
                         onClick = onOpenApiConfig,
                         modifier = Modifier.minimumInteractiveComponentSize()
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Warning,
+                        LiquidGlassIconBadge(
+                            icon = Icons.Default.Warning,
                             contentDescription = "API Key Needed",
-                            tint = AmberWarning
+                            tint = AmberWarning,
+                            active = true
                         )
                     }
                 }
 
-                IconButton(
-                    onClick = onToggleTheme,
-                    modifier = Modifier
-                        .minimumInteractiveComponentSize()
-                        .testTag("theme_toggle_button")
-                ) {
-                    Icon(
-                        imageVector = if (settings.themeMode == ThemeMode.LIGHT) {
-                            Icons.Default.DarkMode
-                        } else {
-                            Icons.Default.LightMode
-                        },
-                        contentDescription = "Toggle Dark or Light Mode",
-                        tint = MaterialTheme.colorScheme.primary
-                    )
+                // Liquid Glass 3-Dot Overflow Menu
+                Box {
+                    IconButton(
+                        onClick = { showThreeDotMenu = true },
+                        modifier = Modifier
+                            .minimumInteractiveComponentSize()
+                            .testTag("three_dot_menu_button")
+                    ) {
+                        LiquidGlassIconBadge(
+                            icon = Icons.Default.MoreVert,
+                            contentDescription = "Study AI Tools Menu",
+                            tint = MaterialTheme.colorScheme.onSurface,
+                            active = showThreeDotMenu
+                        )
+                    }
+
+                    DropdownMenu(
+                        expanded = showThreeDotMenu,
+                        onDismissRequest = { showThreeDotMenu = false },
+                        containerColor = Color.Transparent,
+                        tonalElevation = 0.dp,
+                        shadowElevation = 0.dp
+                    ) {
+                        LiquidGlassSurface(
+                            shape = RoundedCornerShape(24.dp),
+                            accentGlow = true,
+                            tintAlpha = if (isDark) 0.86f else 0.94f,
+                            modifier = Modifier.widthIn(min = 248.dp, max = 290.dp)
+                        ) {
+                            Column(modifier = Modifier.padding(vertical = 6.dp)) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                                ) {
+                                    StudyAiLiquidLogo(size = 24.dp)
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "Study AI Tools",
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                                HorizontalDivider(
+                                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f),
+                                    modifier = Modifier.padding(vertical = 2.dp)
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(if (isTemporaryChat) "Exit Temporary Chat" else "Temporary Chat") },
+                                    leadingIcon = {
+                                        LiquidGlassIconBadge(
+                                            icon = if (isTemporaryChat) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                            contentDescription = null,
+                                            tint = if (isTemporaryChat) AmberWarning else IndigoPrimary,
+                                            size = 30.dp
+                                        )
+                                    },
+                                    onClick = {
+                                        showThreeDotMenu = false
+                                        onToggleTemporaryChat()
+                                    },
+                                    modifier = Modifier.testTag("temporary_chat_toggle_button")
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(if (isOfflineEffective) "Switch to Online Mode" else "Offline Study Mode") },
+                                    leadingIcon = {
+                                        LiquidGlassIconBadge(
+                                            icon = if (isOfflineEffective) Icons.Default.CloudDone else Icons.Default.CloudOff,
+                                            contentDescription = null,
+                                            tint = if (isOfflineEffective) AmberWarning else EmeraldSuccess,
+                                            size = 30.dp
+                                        )
+                                    },
+                                    onClick = {
+                                        showThreeDotMenu = false
+                                        onToggleOfflineMode()
+                                    },
+                                    modifier = Modifier.testTag("offline_mode_topbar_button")
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Progress Dashboard") },
+                                    leadingIcon = {
+                                        LiquidGlassIconBadge(Icons.Default.Analytics, null, IndigoPrimary, size = 30.dp)
+                                    },
+                                    onClick = {
+                                        showThreeDotMenu = false
+                                        onOpenProgress()
+                                    },
+                                    modifier = Modifier.testTag("progress_topbar_button")
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("App Time Limit & Unlock") },
+                                    leadingIcon = {
+                                        LiquidGlassIconBadge(Icons.Default.Timer, null, AmberWarning, size = 30.dp)
+                                    },
+                                    onClick = {
+                                        showThreeDotMenu = false
+                                        onOpenFocusLock()
+                                    },
+                                    modifier = Modifier.testTag("focus_lock_topbar_button")
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Study Timer (Pomodoro)") },
+                                    leadingIcon = {
+                                        LiquidGlassIconBadge(Icons.Default.HourglassTop, null, IndigoPrimary, size = 30.dp)
+                                    },
+                                    onClick = {
+                                        showThreeDotMenu = false
+                                        onOpenStudyTimer()
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("All BD Admission Circulars") },
+                                    leadingIcon = {
+                                        LiquidGlassIconBadge(Icons.Default.EventAvailable, null, CyanTertiary, size = 30.dp)
+                                    },
+                                    onClick = {
+                                        showThreeDotMenu = false
+                                        onOpenAdmissionDetails()
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Unlimited Flashcards") },
+                                    leadingIcon = {
+                                        LiquidGlassIconBadge(Icons.Default.Style, null, EmeraldSuccess, size = 30.dp)
+                                    },
+                                    onClick = {
+                                        showThreeDotMenu = false
+                                        onOpenFlashcards()
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("HSC Physics / Chem / Bio Lab") },
+                                    leadingIcon = {
+                                        LiquidGlassIconBadge(Icons.Default.School, null, CyanTertiary, size = 30.dp)
+                                    },
+                                    onClick = {
+                                        showThreeDotMenu = false
+                                        onOpenHscLab()
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Picture & Video Studio") },
+                                    leadingIcon = {
+                                        LiquidGlassIconBadge(Icons.Default.VideoCameraBack, null, VioletSecondary, size = 30.dp)
+                                    },
+                                    onClick = {
+                                        showThreeDotMenu = false
+                                        onOpenStudio(0)
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Study AI Models & API Key") },
+                                    leadingIcon = {
+                                        LiquidGlassIconBadge(Icons.Default.Key, null, IndigoPrimary, size = 30.dp)
+                                    },
+                                    onClick = {
+                                        showThreeDotMenu = false
+                                        onOpenApiConfig()
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            if (settings.themeMode == ThemeMode.LIGHT) "Dark Mode" else "Light Mode"
+                                        )
+                                    },
+                                    leadingIcon = {
+                                        LiquidGlassIconBadge(
+                                            icon = if (settings.themeMode == ThemeMode.LIGHT) Icons.Default.DarkMode else Icons.Default.LightMode,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            size = 30.dp
+                                        )
+                                    },
+                                    onClick = {
+                                        showThreeDotMenu = false
+                                        onToggleTheme()
+                                    },
+                                    modifier = Modifier.testTag("theme_toggle_button")
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -736,11 +909,11 @@ fun ChatScreen(
             } else {
                 LazyColumn(
                     state = listState,
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 14.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 14.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
                     modifier = Modifier
                         .fillMaxSize()
-                        .widthIn(max = 760.dp)
+                        .widthIn(max = 1040.dp)
                         .align(Alignment.TopCenter)
                 ) {
                     itemsIndexed(messages, key = { _, item -> item.id }) { index, msg ->
@@ -781,11 +954,14 @@ fun ChatScreen(
                             onShare = {
                                 val sendIntent = Intent(Intent.ACTION_SEND).apply {
                                     type = "text/plain"
-                                    putExtra(Intent.EXTRA_TEXT, "Study Update AI:\n\n${msg.content}")
+                                    putExtra(Intent.EXTRA_TEXT, "Study AI:\n\n${msg.content}")
                                 }
-                                context.startActivity(Intent.createChooser(sendIntent, "Share AI Response"))
+                                context.startActivity(Intent.createChooser(sendIntent, "Share Study AI Response"))
                             },
-                            onRegenerate = onRegenerateLast
+                            onRegenerate = onRegenerateLast,
+                            onExpandImage = { bmp ->
+                                fullscreenImage = bmp to msg.content
+                            }
                         )
                     }
 
@@ -834,6 +1010,40 @@ fun ChatScreen(
                 .navigationBarsPadding()
                 .padding(horizontal = 10.dp, vertical = 8.dp)
         ) {
+            if (isImageGenMode) {
+                LiquidGlassSurface(
+                    shape = RoundedCornerShape(14.dp),
+                    accentGlow = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 8.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Palette,
+                            contentDescription = null,
+                            tint = CyanTertiary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "In-Chat Picture Mode — describe any photo or HSC diagram",
+                            style = MaterialTheme.typography.labelMedium,
+                            modifier = Modifier.weight(1f)
+                        )
+                        IconButton(
+                            onClick = { isImageGenMode = false },
+                            modifier = Modifier.size(26.dp)
+                        ) {
+                            Icon(Icons.Default.Close, contentDescription = "Exit Image Mode", modifier = Modifier.size(16.dp))
+                        }
+                    }
+                }
+            }
+
             if (pendingAttachments.isNotEmpty()) {
                 LazyRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -848,6 +1058,22 @@ fun ChatScreen(
                 }
             }
 
+            fun dispatchComposerSubmit() {
+                val prompt = inputText
+                if (prompt.isBlank() && pendingAttachments.isEmpty()) return
+                val trimmed = prompt.trim()
+                inputText = ""
+                if (isImageGenMode) {
+                    isImageGenMode = false
+                    onSendImageInChat(trimmed)
+                } else if (trimmed.startsWith("/image ", ignoreCase = true) || trimmed.startsWith("/pic ", ignoreCase = true)) {
+                    val clean = trimmed.substringAfter(" ").trim()
+                    onSendImageInChat(clean)
+                } else {
+                    onSendMessage(prompt, null)
+                }
+            }
+
             Surface(
                 shape = RoundedCornerShape(28.dp),
                 color = MaterialTheme.colorScheme.surface,
@@ -857,7 +1083,7 @@ fun ChatScreen(
                     .fillMaxWidth()
                     .border(
                         width = 1.dp,
-                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.22f),
+                        color = if (isImageGenMode) CyanTertiary.copy(alpha = 0.65f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.22f),
                         shape = RoundedCornerShape(28.dp)
                     )
             ) {
@@ -867,7 +1093,7 @@ fun ChatScreen(
                         .fillMaxWidth()
                         .padding(horizontal = 6.dp, vertical = 6.dp)
                 ) {
-                    // Plus (+) Tools Menu: Photo, PDF, Generate Picture, Generate Video, HSC Lab
+                    // Plus (+) Tools Menu: Photo, PDF (up to 1 GB), Create Picture in Chat, Video, Podcast & Tools
                     Box {
                         IconButton(
                             onClick = { showPlusMenu = true },
@@ -877,7 +1103,7 @@ fun ChatScreen(
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Add,
-                                contentDescription = "Attachments & AI Skills",
+                                contentDescription = "Photo, PDF & Study AI Tools",
                                 tint = MaterialTheme.colorScheme.primary
                             )
                         }
@@ -887,8 +1113,16 @@ fun ChatScreen(
                             onDismissRequest = { showPlusMenu = false }
                         ) {
                             DropdownMenuItem(
+                                text = { Text("Create Picture in Chat") },
+                                leadingIcon = { Icon(Icons.Default.Palette, null, tint = CyanTertiary) },
+                                onClick = {
+                                    showPlusMenu = false
+                                    isImageGenMode = true
+                                }
+                            )
+                            DropdownMenuItem(
                                 text = { Text("Attach Photo / Diagram") },
-                                leadingIcon = { Icon(Icons.Default.Image, null) },
+                                leadingIcon = { Icon(Icons.Default.Image, null, tint = IndigoPrimary) },
                                 onClick = {
                                     showPlusMenu = false
                                     photoPickerLauncher.launch(
@@ -897,15 +1131,15 @@ fun ChatScreen(
                                 }
                             )
                             DropdownMenuItem(
-                                text = { Text("Attach PDF / Document") },
-                                leadingIcon = { Icon(Icons.Default.AttachFile, null) },
+                                text = { Text("Upload PDF / File (up to 1 GB)") },
+                                leadingIcon = { Icon(Icons.Default.AttachFile, null, tint = VioletSecondary) },
                                 onClick = {
                                     showPlusMenu = false
                                     docPickerLauncher.launch(arrayOf("application/pdf", "text/*", "application/json"))
                                 }
                             )
                             DropdownMenuItem(
-                                text = { Text("Gemini Notebook & PDF Podcast") },
+                                text = { Text("Study AI Notebook & 1GB PDF Podcast") },
                                 leadingIcon = { Icon(Icons.Default.AutoStories, null, tint = IndigoPrimary) },
                                 onClick = {
                                     showPlusMenu = false
@@ -913,7 +1147,7 @@ fun ChatScreen(
                                 }
                             )
                             DropdownMenuItem(
-                                text = { Text("Generate Picture (Nano Banana)") },
+                                text = { Text("Picture Studio (Full Editor)") },
                                 leadingIcon = { Icon(Icons.Default.AutoAwesome, null, tint = IndigoPrimary) },
                                 onClick = {
                                     showPlusMenu = false
@@ -921,7 +1155,7 @@ fun ChatScreen(
                                 }
                             )
                             DropdownMenuItem(
-                                text = { Text("Generate Video (Veo)") },
+                                text = { Text("Video Studio (Veo)") },
                                 leadingIcon = { Icon(Icons.Default.VideoCameraBack, null, tint = VioletSecondary) },
                                 onClick = {
                                     showPlusMenu = false
@@ -937,7 +1171,7 @@ fun ChatScreen(
                                 }
                             )
                             DropdownMenuItem(
-                                text = { Text("Study Flashcards") },
+                                text = { Text("Unlimited Study Flashcards") },
                                 leadingIcon = { Icon(Icons.Default.Style, null, tint = EmeraldSuccess) },
                                 onClick = {
                                     showPlusMenu = false
@@ -961,7 +1195,7 @@ fun ChatScreen(
                                 }
                             )
                             DropdownMenuItem(
-                                text = { Text("Admission Circulars & Links") },
+                                text = { Text("BD Admission Circulars & Links") },
                                 leadingIcon = { Icon(Icons.Default.EventAvailable, null, tint = CyanTertiary) },
                                 onClick = {
                                     showPlusMenu = false
@@ -976,7 +1210,11 @@ fun ChatScreen(
                         onValueChange = { inputText = it },
                         placeholder = {
                             Text(
-                                text = if (isTemporaryChat) "Ask in Temporary Chat..." else "Ask Gemini / Study Update AI...",
+                                text = when {
+                                    isImageGenMode -> "Describe picture to generate in chat..."
+                                    isTemporaryChat -> "Ask Study AI (Temporary Chat)..."
+                                    else -> "Ask Study AI..."
+                                },
                                 style = MaterialTheme.typography.bodyMedium
                             )
                         },
@@ -990,10 +1228,8 @@ fun ChatScreen(
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                         keyboardActions = KeyboardActions(
                             onSend = {
-                                if (!isStreaming && (inputText.isNotBlank() || pendingAttachments.isNotEmpty())) {
-                                    val prompt = inputText
-                                    inputText = ""
-                                    onSendMessage(prompt, null)
+                                if (!isStreaming) {
+                                    dispatchComposerSubmit()
                                 }
                             }
                         ),
@@ -1026,7 +1262,7 @@ fun ChatScreen(
                         )
                     }
 
-                    // Live Voice Chat Button (when idle and text empty, or always accessible!)
+                    // Live Voice Chat Button (when idle and text empty)
                     if (!isStreaming && inputText.isBlank() && pendingAttachments.isEmpty()) {
                         IconButton(
                             onClick = onOpenLiveVoice,
@@ -1061,11 +1297,7 @@ fun ChatScreen(
                         }
                     } else {
                         IconButton(
-                            onClick = {
-                                val prompt = inputText
-                                inputText = ""
-                                onSendMessage(prompt, null)
-                            },
+                            onClick = { dispatchComposerSubmit() },
                             modifier = Modifier
                                 .size(44.dp)
                                 .clip(CircleShape)
@@ -1073,11 +1305,64 @@ fun ChatScreen(
                                 .testTag("send_message_button")
                         ) {
                             Icon(
-                                imageVector = Icons.AutoMirrored.Filled.Send,
+                                imageVector = if (isImageGenMode) Icons.Default.AutoAwesome else Icons.AutoMirrored.Filled.Send,
                                 contentDescription = "Send message",
                                 tint = Color.White
                             )
                         }
+                    }
+                }
+            }
+        }
+    }
+
+    // Fullscreen Image Viewer Dialog for In-Chat Generated Pictures
+    fullscreenImage?.let { (bmp, caption) ->
+        Dialog(
+            onDismissRequest = { fullscreenImage = null },
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.94f))
+                    .statusBarsPadding()
+                    .navigationBarsPadding()
+                    .padding(16.dp)
+            ) {
+                Image(
+                    bitmap = bmp.asImageBitmap(),
+                    contentDescription = caption,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .align(Alignment.Center)
+                )
+
+                Row(
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .align(Alignment.TopCenter)
+                ) {
+                    Button(
+                        onClick = { shareChatBitmap(context, bmp) },
+                        shape = RoundedCornerShape(999.dp)
+                    ) {
+                        Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Share / Save")
+                    }
+
+                    IconButton(
+                        onClick = { fullscreenImage = null },
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(CircleShape)
+                            .background(Color.White.copy(alpha = 0.16f))
+                    ) {
+                        Icon(Icons.Default.Close, contentDescription = "Close fullscreen", tint = Color.White)
                     }
                 }
             }
@@ -1110,9 +1395,9 @@ private fun GeminiWelcomeContent(
         verticalArrangement = Arrangement.spacedBy(14.dp),
         modifier = Modifier
             .fillMaxSize()
-            .widthIn(max = 720.dp)
+            .widthIn(max = 1040.dp)
     ) {
-        // Gemini-Style Gradient Greeting Header
+        // Study AI Gradient Greeting Header
         item {
             Column(modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp)) {
                 Text(
@@ -1134,8 +1419,8 @@ private fun GeminiWelcomeContent(
                 Text(
                     text = when {
                         isOfflineEffective -> "Search local HSC Physics, Chemistry, Biology notes & Flashcards without internet."
-                        isTemporaryChat -> "Ask anything privately — nothing is saved to history."
-                        else -> "How can Study Update AI help you learn or create today?"
+                        isTemporaryChat -> "Ask Study AI privately — nothing is saved to history."
+                        else -> "How can Study AI help you learn, code, or create today?"
                     },
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -1266,26 +1551,31 @@ private fun GeminiBubbleRow(
     onCopyCodeOnly: () -> Unit,
     onCopy: () -> Unit,
     onShare: () -> Unit,
-    onRegenerate: () -> Unit
+    onRegenerate: () -> Unit,
+    onExpandImage: (Bitmap) -> Unit
 ) {
+    val context = LocalContext.current
     val isUser = MessageRole.fromRaw(message.role) == MessageRole.USER
 
     if (isUser) {
+        val visibleAttachments = remember(message.attachmentNames) {
+            message.attachmentNames.filterNot { it.startsWith("IMG_GEN:") }
+        }
         Row(
             horizontalArrangement = Arrangement.End,
             modifier = Modifier.fillMaxWidth()
         ) {
             Box(
                 modifier = Modifier
-                    .widthIn(max = 320.dp)
+                    .widthIn(max = 360.dp)
                     .clip(RoundedCornerShape(22.dp, 22.dp, 6.dp, 22.dp))
                     .background(Brush.linearGradient(listOf(IndigoPrimary, VioletSecondary)))
                     .padding(horizontal = 15.dp, vertical = 11.dp)
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    if (message.attachmentNames.isNotEmpty()) {
+                    if (visibleAttachments.isNotEmpty()) {
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            message.attachmentNames.forEach { fileName ->
+                            visibleAttachments.forEach { fileName ->
                                 Surface(
                                     color = Color.White.copy(alpha = 0.18f),
                                     shape = RoundedCornerShape(8.dp)
@@ -1297,7 +1587,7 @@ private fun GeminiBubbleRow(
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
                                         modifier = Modifier
-                                            .widthIn(max = 120.dp)
+                                            .widthIn(max = 140.dp)
                                             .padding(horizontal = 8.dp, vertical = 4.dp)
                                     )
                                 }
@@ -1313,47 +1603,121 @@ private fun GeminiBubbleRow(
             }
         }
     } else {
-        // Gemini-style clean model response with sparkle badge
-        Row(
-            verticalAlignment = Alignment.Top,
-            modifier = Modifier.fillMaxWidth()
+        val imgFileName = remember(message.attachmentNames) {
+            message.attachmentNames.firstOrNull { it.startsWith("IMG_GEN:") }?.removePrefix("IMG_GEN:")
+        }
+        val generatedBitmap by produceState<Bitmap?>(initialValue = null, imgFileName, message.generatedImagePath) {
+            value = withContext(Dispatchers.IO) {
+                try {
+                    val path = when {
+                        message.generatedImagePath.isNotBlank() -> message.generatedImagePath
+                        !imgFileName.isNullOrBlank() -> File(context.filesDir, "chat_images/$imgFileName").absolutePath
+                        else -> ""
+                    }
+                    if (path.isNotBlank() && File(path).exists()) {
+                        BitmapFactory.decodeFile(path)
+                    } else null
+                } catch (_: Exception) {
+                    null
+                }
+            }
+        }
+
+        // Full-width Study AI response bubble
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 2.dp)
         ) {
-            Box(
-                contentAlignment = Alignment.Center,
-                modifier = Modifier
-                    .padding(top = 4.dp, end = 10.dp)
-                    .size(28.dp)
-                    .clip(CircleShape)
-                    .background(
-                        if (message.errorFlag) {
-                            Brush.linearGradient(listOf(MaterialTheme.colorScheme.error, MaterialTheme.colorScheme.error))
-                        } else {
-                            Brush.linearGradient(listOf(IndigoPrimary, CyanTertiary))
-                        }
-                    )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(bottom = 6.dp, start = 4.dp)
             ) {
-                Icon(
-                    imageVector = Icons.Default.AutoAwesome,
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(15.dp)
+                if (message.errorFlag) {
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .size(24.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.error)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Warning,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+                } else {
+                    StudyAiLiquidLogo(size = 24.dp)
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Study AI",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = if (message.errorFlag) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
                 )
             }
 
             Surface(
-                shape = RoundedCornerShape(18.dp),
+                shape = RoundedCornerShape(20.dp),
                 color = if (message.errorFlag) {
                     MaterialTheme.colorScheme.errorContainer
                 } else {
-                    MaterialTheme.colorScheme.surface.copy(alpha = 0.72f)
+                    MaterialTheme.colorScheme.surface.copy(alpha = 0.85f)
                 },
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.fillMaxWidth()
             ) {
-                Column(modifier = Modifier.padding(12.dp)) {
+                Column(modifier = Modifier.padding(14.dp)) {
                     val contentColor = if (message.errorFlag) {
                         MaterialTheme.colorScheme.onErrorContainer
                     } else {
                         MaterialTheme.colorScheme.onSurface
+                    }
+
+                    generatedBitmap?.let { bmp ->
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 10.dp)
+                                .clip(RoundedCornerShape(16.dp))
+                                .clickable { onExpandImage(bmp) }
+                        ) {
+                            Image(
+                                bitmap = bmp.asImageBitmap(),
+                                contentDescription = message.content,
+                                contentScale = ContentScale.Fit,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 240.dp, max = 460.dp)
+                            )
+                            Surface(
+                                color = Color.Black.copy(alpha = 0.55f),
+                                shape = RoundedCornerShape(999.dp),
+                                modifier = Modifier
+                                    .align(Alignment.BottomEnd)
+                                    .padding(10.dp)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Fullscreen,
+                                        contentDescription = "View Fullscreen",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(15.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "Full View",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = Color.White
+                                    )
+                                }
+                            }
+                        }
                     }
 
                     MarkdownMessageView(
@@ -1409,7 +1773,10 @@ private fun GeminiBubbleRow(
                             )
                         }
                         IconButton(
-                            onClick = onShare,
+                            onClick = {
+                                val bmp = generatedBitmap
+                                if (bmp != null) shareChatBitmap(context, bmp) else onShare()
+                            },
                             modifier = Modifier.minimumInteractiveComponentSize()
                         ) {
                             Icon(
@@ -1439,6 +1806,21 @@ private fun GeminiBubbleRow(
     }
 }
 
+private fun shareChatBitmap(context: Context, bitmap: Bitmap) {
+    val dir = File(context.cacheDir, "shared_images").apply { mkdirs() }
+    val file = File(dir, "study_ai_${System.currentTimeMillis()}.png")
+    FileOutputStream(file).use { out ->
+        bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+    }
+    val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+    val intent = Intent(Intent.ACTION_SEND).apply {
+        type = "image/png"
+        putExtra(Intent.EXTRA_STREAM, uri)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+    context.startActivity(Intent.createChooser(intent, "Share Study AI Picture"))
+}
+
 private fun extractOnlyCodeBlocks(markdown: String): String? {
     val regex = Regex("```[^\\n]*\\n([\\s\\S]*?)```")
     val blocks = regex.findAll(markdown)
@@ -1450,32 +1832,31 @@ private fun extractOnlyCodeBlocks(markdown: String): String? {
 
 @Composable
 private fun StreamingBubbleRow(text: String) {
-    Row(
-        verticalAlignment = Alignment.Top,
-        modifier = Modifier.fillMaxWidth()
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 2.dp)
     ) {
-        Box(
-            contentAlignment = Alignment.Center,
-            modifier = Modifier
-                .padding(top = 4.dp, end = 10.dp)
-                .size(28.dp)
-                .clip(CircleShape)
-                .background(Brush.linearGradient(listOf(IndigoPrimary, CyanTertiary)))
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(bottom = 6.dp, start = 4.dp)
         ) {
-            Icon(
-                imageVector = Icons.Default.AutoAwesome,
-                contentDescription = null,
-                tint = Color.White,
-                modifier = Modifier.size(15.dp)
+            StudyAiLiquidLogo(size = 24.dp)
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = "Study AI",
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary
             )
         }
 
         Surface(
-            shape = RoundedCornerShape(18.dp),
-            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
-            modifier = Modifier.weight(1f)
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+            modifier = Modifier.fillMaxWidth()
         ) {
-            Box(modifier = Modifier.padding(12.dp)) {
+            Box(modifier = Modifier.padding(14.dp)) {
                 if (text.isBlank()) {
                     TypingIndicatorDots()
                 } else {
@@ -1527,7 +1908,7 @@ private fun TypingIndicatorDots() {
         }
         Spacer(modifier = Modifier.width(6.dp))
         Text(
-            text = "Gemini is thinking...",
+            text = "Study AI is thinking...",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )

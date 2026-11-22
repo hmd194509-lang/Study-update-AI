@@ -20,6 +20,7 @@ import com.example.data.model.ChatMessage
 import com.example.data.model.ChatSession
 import com.example.data.model.ConnectionTestState
 import com.example.data.model.FlashcardSubject
+import com.example.data.model.FlashcardType
 import com.example.data.model.GeminiNotebook
 import com.example.data.model.ImageGenUiState
 import com.example.data.model.LanguagePreference
@@ -73,6 +74,7 @@ import java.util.UUID
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class MainViewModel(
+    private val appContext: Context,
     private val chatRepository: ChatRepository,
     private val geminiRepository: GeminiRepository,
     private val settingsDataStore: SettingsDataStore,
@@ -589,6 +591,154 @@ class MainViewModel(
                 throw e
             } catch (e: Exception) {
                 Log.e(TAG, "AI generation failed", e)
+                val friendlyError = geminiRepository.mapExceptionToFriendlyMessage(e, customKey)
+                if (_isTemporaryChat.value) {
+                    _temporaryMessages.value = _temporaryMessages.value + ChatMessage(
+                        id = UUID.randomUUID().toString(),
+                        userId = currentUserId,
+                        sessionId = "temp",
+                        role = MessageRole.MODEL.name,
+                        content = friendlyError,
+                        mode = mode.name,
+                        errorFlag = true
+                    )
+                } else {
+                    val sid = _activeSessionId.value
+                    if (!sid.isNullOrBlank()) {
+                        chatRepository.addMessage(
+                            sessionId = sid,
+                            role = MessageRole.MODEL,
+                            content = friendlyError,
+                            mode = mode,
+                            errorFlag = true
+                        )
+                    } else {
+                        _bannerMessage.value = friendlyError
+                    }
+                }
+            } finally {
+                _isStreaming.value = false
+                _streamingMessageText.value = null
+                activeGenerationJob = null
+            }
+        }
+    }
+
+    fun sendImageInChat(rawPrompt: String) {
+        if (_isStreaming.value) return
+        val prompt = rawPrompt.trim()
+        val attachments = _pendingAttachments.value
+        val refBitmap = attachments.filterIsInstance<AttachmentPayload.ImageAttachment>().firstOrNull()?.bitmap
+        if (prompt.isEmpty()) {
+            _bannerMessage.value = "Describe the picture or diagram you want Study AI to create."
+            return
+        }
+
+        val currentSettings = settings.value
+        val isTemp = _isTemporaryChat.value
+        val mode = _activeMode.value
+
+        activeGenerationJob = viewModelScope.launch {
+            var customKey: String? = null
+            try {
+                customKey = if (currentSettings.useCustomApiKey) {
+                    settingsDataStore.getDecryptedCustomApiKey()
+                } else null
+
+                val safePrompt = SecretSanitizer.redact(prompt, customKey)
+                val userText = "🎨 Generate picture: $safePrompt"
+                var sessionId: String? = null
+
+                if (isTemp) {
+                    _temporaryMessages.value = _temporaryMessages.value + ChatMessage(
+                        id = UUID.randomUUID().toString(),
+                        userId = currentUserId,
+                        sessionId = "temp",
+                        role = MessageRole.USER.name,
+                        content = userText,
+                        mode = mode.name
+                    )
+                    _pendingAttachments.value = emptyList()
+                } else {
+                    sessionId = _activeSessionId.value
+                    if (sessionId.isNullOrBlank()) {
+                        val createResult = chatRepository.createSession(
+                            title = "Picture: ${safePrompt.take(36)}",
+                            mode = mode
+                        )
+                        sessionId = createResult.getOrElse { err ->
+                            _bannerMessage.value = err.localizedMessage ?: "Failed to create conversation."
+                            return@launch
+                        }
+                        _activeSessionId.value = sessionId
+                    }
+                    _pendingAttachments.value = emptyList()
+                    chatRepository.addMessage(
+                        sessionId = sessionId,
+                        role = MessageRole.USER,
+                        content = userText,
+                        mode = mode
+                    ).onFailure { err ->
+                        _bannerMessage.value = err.localizedMessage ?: "Failed to save message."
+                        return@launch
+                    }
+                    chatRepository.updateSessionMetadata(
+                        sessionId = sessionId,
+                        mode = mode,
+                        lastMessagePreview = userText.take(120)
+                    )
+                }
+
+                if (currentSettings.offlineModeEnabled || !networkMonitor.isCurrentlyOnline()) {
+                    throw IllegalStateException("Internet connection is required to generate pictures.")
+                }
+
+                _isStreaming.value = true
+                _streamingMessageText.value = "🎨 Study AI is creating your picture..."
+
+                val bitmap = geminiRepository.generateImage(
+                    prompt = safePrompt,
+                    referenceBitmap = refBitmap,
+                    useCustomKey = currentSettings.useCustomApiKey,
+                    customApiKey = customKey
+                )
+
+                val imgDir = java.io.File(appContext.filesDir, "chat_images").apply { mkdirs() }
+                val fileName = "chat_img_${UUID.randomUUID()}.png"
+                val outFile = java.io.File(imgDir, fileName)
+                java.io.FileOutputStream(outFile).use { fos ->
+                    bitmap.compress(Bitmap.CompressFormat.PNG, 95, fos)
+                }
+
+                val caption = "Generated picture for **$safePrompt** _(Tap image to view fullscreen or share)_"
+                if (isTemp) {
+                    _temporaryMessages.value = _temporaryMessages.value + ChatMessage(
+                        id = UUID.randomUUID().toString(),
+                        userId = currentUserId,
+                        sessionId = "temp",
+                        role = MessageRole.MODEL.name,
+                        content = caption,
+                        mode = mode.name,
+                        attachmentNames = listOf("IMG_GEN:$fileName"),
+                        generatedImagePath = outFile.absolutePath
+                    )
+                } else if (!sessionId.isNullOrBlank()) {
+                    chatRepository.addMessage(
+                        sessionId = sessionId,
+                        role = MessageRole.MODEL,
+                        content = caption,
+                        mode = mode,
+                        attachmentNames = listOf("IMG_GEN:$fileName")
+                    )
+                    chatRepository.updateSessionMetadata(
+                        sessionId = sessionId,
+                        lastMessagePreview = "🎨 $safePrompt".take(120)
+                    )
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e(TAG, "In-chat picture generation failed", e)
                 val friendlyError = geminiRepository.mapExceptionToFriendlyMessage(e, customKey)
                 if (_isTemporaryChat.value) {
                     _temporaryMessages.value = _temporaryMessages.value + ChatMessage(
@@ -1145,7 +1295,10 @@ class MainViewModel(
 
     fun generateAiFlashcards(
         subject: FlashcardSubject,
+        cardType: FlashcardType,
         topic: String,
+        count: Int,
+        customInstruction: String,
         onResult: (Boolean, String) -> Unit
     ) {
         if (_isGeneratingFlashcards.value) return
@@ -1164,11 +1317,14 @@ class MainViewModel(
                 val generated = geminiRepository.generateFlashcards(
                     topic = topic,
                     subject = subject,
+                    cardType = cardType,
+                    count = count,
+                    customInstruction = customInstruction,
                     useCustomKey = currentSettings.useCustomApiKey,
                     customApiKey = customKey
                 )
                 settingsDataStore.saveFlashcards(generated + flashcards.value)
-                onResult(true, "Added ${generated.size} AI flashcards for \"$topic\"!")
+                onResult(true, "Added ${generated.size} ${cardType.label} cards for \"$topic\" (Unlimited deck)!")
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -1658,7 +1814,7 @@ class MainViewModel(
         viewModelScope.launch {
             settingsDataStore.clearCustomApiKey()
             _connectionTestState.value = ConnectionTestState.Idle
-            _bannerMessage.value = "Stored custom API key removed. Switched back to Firebase AI Logic."
+            _bannerMessage.value = "Personal API key removed. Switched back to Owner Default / Firebase AI Logic."
         }
     }
 

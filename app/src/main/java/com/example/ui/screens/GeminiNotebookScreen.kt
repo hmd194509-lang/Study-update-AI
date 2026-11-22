@@ -279,7 +279,7 @@ fun GeminiNotebookScreen(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "Gemini Notebook",
+                        text = "Study AI Notebook",
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -378,12 +378,12 @@ fun GeminiNotebookScreen(
                             modifier = Modifier.size(48.dp)
                         )
                         Text(
-                            text = "Gemini Notebook & PDF Podcast",
+                            text = "Study AI Notebook & 1GB PDF Podcast",
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = "Upload any PDF chapter, lecture slide, or study notes. Gemini turns it into a 2-Host Audio Podcast you can listen to, plus Study Guides, MCQ Quizzes, and source-grounded Q&A.",
+                            text = "Upload any PDF chapter up to 1 GB, lecture slide, or study notes. Two AI hosts (Ayesha & Rafi) discuss and explain the entire PDF aloud, plus Study Guides, MCQ Quizzes & Q&A.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -615,7 +615,7 @@ private fun NotebookSourcesTab(
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .padding(16.dp)
-            .widthIn(max = 720.dp)
+            .widthIn(max = 960.dp)
     ) {
         // Hero Upload PDF -> Podcast Card
         Card(
@@ -645,12 +645,12 @@ private fun NotebookSourcesTab(
                     Spacer(modifier = Modifier.width(12.dp))
                     Column {
                         Text(
-                            text = "Upload PDF & Listen as Podcast",
+                            text = "Upload PDF (Up to 1 GB) & Listen",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = "পিডিএফ আপলোড করে পডকাস্ট আকারে শুনুন ও নোটবুক তৈরি করুন",
+                            text = "সর্বোচ্চ ১ জিবি পিডিএফ আপলোড করুন — দুইজন AI হোস্ট কথা বলে পুরো পিডিএফ বুঝিয়ে দিবে",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -841,7 +841,7 @@ private fun NotebookPodcastStudioTab(
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
             .padding(16.dp)
-            .widthIn(max = 720.dp)
+            .widthIn(max = 960.dp)
     ) {
         // Audio Overview Podcast Player Card
         Card(
@@ -1238,7 +1238,7 @@ private fun NotebookChatTab(
                 item {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text(
-                            text = "Ask Gemini grounded in ${notebook.sources.size} source(s):",
+                            text = "Ask Study AI grounded in ${notebook.sources.size} source(s):",
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.SemiBold
                         )

@@ -8,12 +8,14 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.example.BuildConfig
 import com.example.data.ai.StudyFlashcardBank
 import com.example.data.model.AcademicProfile
 import com.example.data.model.AppLimitRule
 import com.example.data.model.AppSettings
 import com.example.data.model.DEFAULT_MODEL_ID
 import com.example.data.model.FlashcardSubject
+import com.example.data.model.FlashcardType
 import com.example.data.model.GeminiNotebook
 import com.example.data.model.LanguagePreference
 import com.example.data.model.MessageRole
@@ -62,9 +64,20 @@ class SettingsDataStore(private val context: Context) {
         val NOTEBOOKS_JSON = stringPreferencesKey("gemini_notebooks_json")
     }
 
+    private fun resolveOwnerDefaultKey(): String? {
+        val raw = BuildConfig.DEFAULT_OWNER_GEMINI_API_KEY.trim()
+        return raw.takeIf { it.isNotEmpty() && it != "ENTER_YOUR_GEMINI_API_KEY" }
+    }
+
     val settingsFlow: Flow<AppSettings> = context.dataStore.data.map { prefs ->
         val encrypted = prefs[Keys.ENCRYPTED_API_KEY]
-        val decrypted = encrypted?.let { KeystoreCrypto.decrypt(it) }
+        val personalKey = encrypted?.let { KeystoreCrypto.decrypt(it) }?.trim()?.takeIf { it.isNotEmpty() }
+        val ownerDefaultKey = resolveOwnerDefaultKey()
+        val hasOwnerDefault = ownerDefaultKey != null
+        val useCustomPref = prefs[Keys.USE_CUSTOM_KEY] ?: hasOwnerDefault
+        val usingDefaultOwner = useCustomPref && personalKey == null && hasOwnerDefault
+        val activeKeyForMask = personalKey ?: if (useCustomPref) ownerDefaultKey else null
+
         AppSettings(
             themeMode = ThemeMode.fromRaw(prefs[Keys.THEME_MODE]),
             languagePreference = LanguagePreference.fromRaw(prefs[Keys.LANG_PREF]),
@@ -76,8 +89,9 @@ class SettingsDataStore(private val context: Context) {
             aiVoiceName = prefs[Keys.AI_VOICE_NAME] ?: "AOEDE",
             ttsPitch = prefs[Keys.TTS_PITCH] ?: 1.0f,
             selectedModelId = prefs[Keys.MODEL_ID] ?: DEFAULT_MODEL_ID,
-            useCustomApiKey = prefs[Keys.USE_CUSTOM_KEY] ?: false,
-            maskedCustomApiKey = decrypted?.let { SecretSanitizer.maskApiKey(it) },
+            useCustomApiKey = useCustomPref,
+            usingDefaultOwnerKey = usingDefaultOwner,
+            maskedCustomApiKey = activeKeyForMask?.let { SecretSanitizer.maskApiKey(it) },
             offlineModeEnabled = prefs[Keys.OFFLINE_MODE_ENABLED] ?: false
         )
     }
@@ -109,8 +123,9 @@ class SettingsDataStore(private val context: Context) {
 
     suspend fun getDecryptedCustomApiKey(): String? {
         val prefs = context.dataStore.data.first()
-        val encrypted = prefs[Keys.ENCRYPTED_API_KEY] ?: return null
-        return KeystoreCrypto.decrypt(encrypted)?.trim()?.takeIf { it.isNotEmpty() }
+        val encrypted = prefs[Keys.ENCRYPTED_API_KEY]
+        val personal = encrypted?.let { KeystoreCrypto.decrypt(it) }?.trim()?.takeIf { it.isNotEmpty() }
+        return personal ?: resolveOwnerDefaultKey()
     }
 
     suspend fun updateThemeMode(mode: ThemeMode) {
@@ -173,9 +188,10 @@ class SettingsDataStore(private val context: Context) {
     }
 
     suspend fun clearCustomApiKey() {
+        val hasOwnerDefault = resolveOwnerDefaultKey() != null
         context.dataStore.edit {
             it.remove(Keys.ENCRYPTED_API_KEY)
-            it[Keys.USE_CUSTOM_KEY] = false
+            it[Keys.USE_CUSTOM_KEY] = hasOwnerDefault
         }
     }
 
@@ -322,11 +338,12 @@ class SettingsDataStore(private val context: Context) {
 
     private fun encodeFlashcards(cards: List<StudyFlashcard>): String {
         val arr = JSONArray()
-        cards.take(150).forEach { c ->
+        cards.forEach { c ->
             arr.put(
                 JSONObject().apply {
                     put("id", c.id)
                     put("subject", c.subject.name)
+                    put("type", c.type.name)
                     put("front", c.front)
                     put("back", c.back)
                     put("admissionNote", c.admissionNote)
@@ -349,6 +366,7 @@ class SettingsDataStore(private val context: Context) {
                 StudyFlashcard(
                     id = obj.optString("id"),
                     subject = FlashcardSubject.fromRaw(obj.optString("subject")),
+                    type = FlashcardType.fromRaw(obj.optString("type")),
                     front = obj.optString("front"),
                     back = obj.optString("back"),
                     admissionNote = obj.optString("admissionNote"),

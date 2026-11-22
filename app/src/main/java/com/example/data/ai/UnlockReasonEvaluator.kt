@@ -38,7 +38,7 @@ class UnlockReasonEvaluator {
 
     private val aiEvaluatorModel by lazy {
         Firebase.ai.generativeModel(
-            modelName = "gemini-3.5-flash-lite",
+            modelName = "gemini-2.5-flash-lite",
             generationConfig = generationConfig {
                 responseMimeType = "application/json"
                 responseSchema = reasonSchema
@@ -75,19 +75,25 @@ class UnlockReasonEvaluator {
             return@withContext evaluateLocally(reason, evaluatedByAi = false)
         }
 
-        // Step 3: Evaluate via Gemini AI for nuanced English / Bengali / Banglish understanding
+        // Step 3: Evaluate via Gemini AI (Custom Key -> Firebase AI fallback -> Local fallback)
         try {
             val prompt = "App to unlock: $appName\nExtra minutes requested: $extraMinutes\nUser reason: \"$reason\""
             val jsonStr = if (useCustomKey && !customApiKey.isNullOrBlank()) {
-                evaluateViaCustomKey(customApiKey.trim(), prompt)
+                runCatching { evaluateViaCustomKey(customApiKey.trim(), prompt) }.getOrElse {
+                    withTimeout(25_000L) {
+                        aiEvaluatorModel.generateContent(prompt).text
+                            ?: throw IllegalStateException("Empty evaluation response.")
+                    }
+                }
             } else {
-                withTimeout(30_000L) {
+                withTimeout(25_000L) {
                     aiEvaluatorModel.generateContent(prompt).text
                         ?: throw IllegalStateException("Empty evaluation response.")
                 }
             }
 
-            val obj = JSONObject(jsonStr)
+            val cleaned = jsonStr.trim().removePrefix("```json").removePrefix("```").removeSuffix("```").trim()
+            val obj = JSONObject(cleaned)
             val score = obj.optInt("score", 0).coerceIn(0, 100)
             val aiApproved = obj.optBoolean("approved", false) && score >= 65
             val feedback = obj.optString("feedback").trim().ifBlank {
@@ -109,7 +115,7 @@ class UnlockReasonEvaluator {
     }
 
     private fun evaluateViaCustomKey(apiKey: String, prompt: String): String {
-        val url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent"
+        val encodedKey = java.net.URLEncoder.encode(apiKey, "UTF-8")
         val systemText = "You are a strict digital-wellbeing gatekeeper. Approve ONLY genuinely useful, educational, study, work, or urgent reasons (score >= 65). Reject lazy, timepass, gaming, reels, or vague reasons. Return JSON with keys approved (boolean), score (integer 0-100), feedback (string)."
         val body = JSONObject().apply {
             put(
@@ -119,7 +125,8 @@ class UnlockReasonEvaluator {
             put(
                 "contents",
                 JSONArray().put(
-                    JSONObject().put("parts", JSONArray().put(JSONObject().put("text", prompt)))
+                    JSONObject().put("role", "user")
+                        .put("parts", JSONArray().put(JSONObject().put("text", prompt)))
                 )
             )
             put(
@@ -130,23 +137,49 @@ class UnlockReasonEvaluator {
                 }
             )
         }
-        val req = Request.Builder()
-            .url(url)
-            .addHeader("x-goog-api-key", apiKey)
-            .addHeader("Content-Type", "application/json")
-            .post(body.toString().toRequestBody("application/json; charset=utf-8".toMediaType()))
-            .build()
 
-        okHttpClient.newCall(req).execute().use { res ->
-            if (!res.isSuccessful) error("HTTP ${res.code}")
-            val root = JSONObject(res.body?.string().orEmpty())
-            return root.getJSONArray("candidates")
-                .getJSONObject(0)
-                .getJSONObject("content")
-                .getJSONArray("parts")
-                .getJSONObject(0)
-                .getString("text")
+        val endpoints = if (apiKey.startsWith("AQ.")) {
+            listOf(
+                "https://aiplatform.googleapis.com/v1/publishers/google/models/gemini-2.5-flash-lite:generateContent?key=$encodedKey",
+                "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=$encodedKey"
+            )
+        } else {
+            listOf(
+                "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent",
+                "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
+            )
         }
+
+        var lastError = "HTTP failure"
+        for (url in endpoints) {
+            val req = Request.Builder()
+                .url(url)
+                .apply {
+                    if (!url.contains("key=")) addHeader("x-goog-api-key", apiKey)
+                }
+                .addHeader("Content-Type", "application/json")
+                .post(body.toString().toRequestBody("application/json; charset=utf-8".toMediaType()))
+                .build()
+
+            try {
+                okHttpClient.newCall(req).execute().use { res ->
+                    if (res.isSuccessful) {
+                        val root = JSONObject(res.body?.string().orEmpty())
+                        return root.getJSONArray("candidates")
+                            .getJSONObject(0)
+                            .getJSONObject("content")
+                            .getJSONArray("parts")
+                            .getJSONObject(0)
+                            .getString("text")
+                    } else {
+                        lastError = "HTTP ${res.code}"
+                    }
+                }
+            } catch (e: Exception) {
+                lastError = e.localizedMessage ?: "Network error"
+            }
+        }
+        error(lastError)
     }
 
     private fun preValidateReason(reason: String): UnlockReasonEvaluation? {

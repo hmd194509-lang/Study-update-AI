@@ -180,6 +180,7 @@ fun ApiConfigScreen(
 
             // Connection Status Card
             val isBuiltInActive = !settings.useCustomApiKey
+            val isOwnerDefault = settings.useCustomApiKey && settings.usingDefaultOwnerKey
             val isCustomReady = settings.useCustomApiKey && !settings.maskedCustomApiKey.isNullOrBlank()
             val statusHealthy = isBuiltInActive || isCustomReady
 
@@ -206,7 +207,8 @@ fun ApiConfigScreen(
                             Text(
                                 text = when {
                                     isBuiltInActive -> "Connected via Firebase AI Logic"
-                                    isCustomReady -> "Custom Gemini API Key Active"
+                                    isOwnerDefault -> "Default Study AI Key Active"
+                                    isCustomReady -> "Personal API Key Active"
                                     else -> "Custom API Key Required"
                                 },
                                 style = MaterialTheme.typography.titleMedium,
@@ -215,8 +217,9 @@ fun ApiConfigScreen(
                             Text(
                                 text = when {
                                     isBuiltInActive -> "Zero-key App Check attestation enabled • Model: ${settings.selectedModelId}"
-                                    isCustomReady -> "Encrypted Key: ${settings.maskedCustomApiKey} • Model: ${settings.selectedModelId}"
-                                    else -> "Enter your Gemini API key below or switch back to built-in Firebase AI Logic."
+                                    isOwnerDefault -> "Pre-configured Owner Key (${settings.maskedCustomApiKey}) • Anyone can add their own key below • Model: ${settings.selectedModelId}"
+                                    isCustomReady -> "Encrypted Personal Key: ${settings.maskedCustomApiKey} • Model: ${settings.selectedModelId}"
+                                    else -> "Enter your API key below or switch back to built-in Firebase AI Logic."
                                 },
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -309,13 +312,13 @@ fun ApiConfigScreen(
                             apiKeyInput = it
                             saveFeedback = null
                         },
-                        label = { Text("Gemini API Key") },
+                        label = { Text("Personal API Key (Optional Override)") },
                         placeholder = {
                             Text(
-                                if (settings.maskedCustomApiKey != null) {
-                                    "Saved: ${settings.maskedCustomApiKey} (enter new to replace)"
-                                } else {
-                                    "Paste AIza... key here"
+                                when {
+                                    settings.usingDefaultOwnerKey -> "Owner Default Active (${settings.maskedCustomApiKey}) — paste yours to override"
+                                    settings.maskedCustomApiKey != null -> "Personal Key: ${settings.maskedCustomApiKey} (enter new to replace)"
+                                    else -> "Paste AQ... or AIza... key here"
                                 }
                             )
                         },
@@ -367,7 +370,7 @@ fun ApiConfigScreen(
                             Text("Save Encrypted Key")
                         }
 
-                        if (settings.maskedCustomApiKey != null) {
+                        if (!settings.usingDefaultOwnerKey && settings.maskedCustomApiKey != null) {
                             OutlinedButton(
                                 onClick = {
                                     onClearCustomKey()
@@ -378,7 +381,7 @@ fun ApiConfigScreen(
                             ) {
                                 Icon(Icons.Default.DeleteOutline, contentDescription = null)
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("Remove")
+                                Text("Reset to Default")
                             }
                         }
                     }
@@ -394,7 +397,7 @@ fun ApiConfigScreen(
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(
-                        text = "Gemini Model",
+                        text = "Study AI Model",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.primary

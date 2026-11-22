@@ -84,6 +84,7 @@ data class AppSettings(
     val ttsPitch: Float = 1.0f,
     val selectedModelId: String = DEFAULT_MODEL_ID,
     val useCustomApiKey: Boolean = false,
+    val usingDefaultOwnerKey: Boolean = false,
     val maskedCustomApiKey: String? = null,
     val offlineModeEnabled: Boolean = false
 )
@@ -100,17 +101,22 @@ const val GEMINI_API_KEY_PORTAL_URL = "https://aistudio.google.com/apikey"
 val SUPPORTED_GEMINI_MODELS = listOf(
     GeminiModelOption(
         id = "gemini-3.8-flash",
-        title = "Gemini 3.8 Flash (Recommended)",
-        subtitle = "Fast frontier intelligence for study, coding, Bengali/English, images & PDFs."
+        title = "Study AI 3.8 Flash (Recommended)",
+        subtitle = "Fast frontier intelligence for study, coding, Bengali/English, images & 1GB PDFs."
+    ),
+    GeminiModelOption(
+        id = "gemini-4-hydrogen",
+        title = "Study AI 4 Hydrogen (New)",
+        subtitle = "Next-gen fast reasoning & bilingual HSC/Admission clarity."
     ),
     GeminiModelOption(
         id = "gemini-3.5-flash-lite",
-        title = "Gemini 3.5 Flash-Lite",
+        title = "Study AI 3.5 Flash-Lite",
         subtitle = "Ultra-low latency & high efficiency for quick Q&A and summaries."
     ),
     GeminiModelOption(
         id = "gemini-4-argon",
-        title = "Gemini 4 Argon",
+        title = "Study AI 4 Argon",
         subtitle = "Advanced STEM, higher math, physics & complex coding reasoning."
     )
 )
@@ -137,6 +143,7 @@ data class ChatMessage(
     val content: String = "",
     val mode: String = StudyMode.GENERAL.name,
     val attachmentNames: List<String> = emptyList(),
+    val generatedImagePath: String = "",
     val errorFlag: Boolean = false,
     @ServerTimestamp val createdAt: Timestamp? = null
 )
@@ -152,7 +159,9 @@ sealed interface AttachmentPayload {
     data class PdfAttachment(
         val id: String,
         val name: String,
-        val bytes: ByteArray
+        val bytes: ByteArray = ByteArray(0),
+        val localFilePath: String = "",
+        val sizeBytes: Long = bytes.size.toLong()
     ) : AttachmentPayload
 
     data class TextDocumentAttachment(
@@ -191,7 +200,7 @@ sealed interface VideoGenUiState {
 }
 
 enum class LiveVoiceMode(val label: String) {
-    GEMINI_LIVE("Gemini Live Audio"),
+    GEMINI_LIVE("Live Voice Audio"),
     BILINGUAL_LOOP("Voice Loop (বাংলা & EN)")
 }
 
@@ -261,9 +270,24 @@ enum class FlashcardSubject(val label: String, val bnLabel: String) {
     }
 }
 
+enum class FlashcardType(val label: String, val bnLabel: String, val promptHint: String) {
+    MIXED("Mixed Exam", "মিশ্র", "mix of core concepts, formulas, definitions and exam traps"),
+    FORMULA("Formulas", "সূত্রাবলি", "mathematical & scientific formulas, SI units, and derivations"),
+    DEFINITION("Definitions & Laws", "সংজ্ঞা ও সূত্র", "crystal-clear definitions, laws, and scientific principles"),
+    MCQ_TRAP("MCQ Traps", "এমসিকিউ ট্র্যাপ", "tricky admission MCQ facts, exceptions, and common mistakes"),
+    CQ_SHORT("CQ (ক ও খ)", "সৃজনশীল ক-খ", "HSC Creative Question জ্ঞানমূলক (ক) and অনুধাবনমূলক (খ) answers"),
+    REACTIONS("Reactions & Cycles", "বিক্রিয়া ও চক্র", "important chemical reactions, reagents, or biological cycles");
+
+    companion object {
+        fun fromRaw(raw: String?): FlashcardType =
+            entries.firstOrNull { it.name == raw } ?: MIXED
+    }
+}
+
 data class StudyFlashcard(
     val id: String,
     val subject: FlashcardSubject,
+    val type: FlashcardType = FlashcardType.MIXED,
     val front: String,
     val back: String,
     val admissionNote: String = "",
@@ -320,9 +344,10 @@ data class StudyTimerSession(
 
 enum class AdmissionCategory(val label: String) {
     MEDICAL("Medical & Dental"),
-    ENGINEERING("Engineering (BUET/CKRUET)"),
-    UNIVERSITY("DU & GST Universities"),
-    AGRI_OTHER("Agri & Special")
+    ENGINEERING("Engineering"),
+    UNIVERSITY("Public & GST"),
+    AGRI_OTHER("Agri & Special"),
+    PRIVATE("Private Universities")
 }
 
 data class AdmissionUniversityInfo(

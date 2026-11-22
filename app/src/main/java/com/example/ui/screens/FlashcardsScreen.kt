@@ -73,7 +73,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.verticalScroll
 import com.example.data.model.FlashcardSubject
+import com.example.data.model.FlashcardType
 import com.example.data.model.StudyFlashcard
 import com.example.ui.theme.AmberWarning
 import com.example.ui.theme.CyanTertiary
@@ -90,12 +92,13 @@ fun FlashcardsScreen(
     onBack: () -> Unit,
     onReviewCard: (String, Boolean) -> Unit,
     onAddCustomCard: (FlashcardSubject, String, String, String) -> Unit,
-    onGenerateAiCards: (FlashcardSubject, String, (Boolean, String) -> Unit) -> Unit,
+    onGenerateAiCards: (FlashcardSubject, FlashcardType, String, Int, String, (Boolean, String) -> Unit) -> Unit,
     onDeleteCard: (String) -> Unit
 ) {
     BackHandler { onBack() }
 
     var selectedSubject by remember { mutableStateOf<FlashcardSubject?>(null) }
+    var selectedType by remember { mutableStateOf<FlashcardType?>(null) }
     var unmasteredOnly by remember { mutableStateOf(false) }
     var currentIndex by remember { mutableIntStateOf(0) }
     var isFlipped by remember { mutableStateOf(false) }
@@ -109,12 +112,16 @@ fun FlashcardsScreen(
 
     var showAiGenDialog by remember { mutableStateOf(false) }
     var aiSubject by remember { mutableStateOf(FlashcardSubject.PHYSICS) }
+    var aiType by remember { mutableStateOf(FlashcardType.MIXED) }
+    var aiCount by remember { mutableIntStateOf(10) }
     var aiTopic by remember { mutableStateOf("") }
+    var aiCustomInstr by remember { mutableStateOf("") }
     var aiStatusMsg by remember { mutableStateOf<Pair<Boolean, String>?>(null) }
 
-    val visibleCards = remember(flashcards, selectedSubject, unmasteredOnly, shuffleSeed) {
+    val visibleCards = remember(flashcards, selectedSubject, selectedType, unmasteredOnly, shuffleSeed) {
         val base = flashcards.filter { card ->
             (selectedSubject == null || card.subject == selectedSubject) &&
+                (selectedType == null || card.type == selectedType) &&
                 (!unmasteredOnly || !card.isMastered)
         }
         if (shuffleSeed > 0) base.shuffled(kotlin.random.Random(shuffleSeed)) else base
@@ -180,12 +187,12 @@ fun FlashcardsScreen(
             }
         )
 
-        // Deck Mastery Progress Bar + AI Generate Action
+        // Deck Mastery Progress Bar + Unlimited AI Generate Action
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp)
-                .widthIn(max = 720.dp)
+                .widthIn(max = 960.dp)
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -212,7 +219,7 @@ fun FlashcardsScreen(
                         Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(15.dp))
                     }
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text(if (isOffline) "AI Gen (Offline)" else "AI 5 Cards")
+                    Text(if (isOffline) "AI Gen (Offline)" else "AI Unlimited")
                 }
             }
 
@@ -277,9 +284,38 @@ fun FlashcardsScreen(
                     label = { Text("Practice Needed") }
                 )
             }
+
+            // Type Filters (Formulas, Definitions, MCQ Traps, CQ, Reactions, Mixed)
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+            ) {
+                FilterChip(
+                    selected = selectedType == null,
+                    onClick = {
+                        selectedType = null
+                        currentIndex = 0
+                        isFlipped = false
+                    },
+                    label = { Text("All Types") }
+                )
+                FlashcardType.entries.forEach { type ->
+                    FilterChip(
+                        selected = selectedType == type,
+                        onClick = {
+                            selectedType = if (selectedType == type) null else type
+                            currentIndex = 0
+                            isFlipped = false
+                        },
+                        label = { Text(type.label) }
+                    )
+                }
+            }
         }
 
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(6.dp))
 
         LazyColumn(
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -287,7 +323,7 @@ fun FlashcardsScreen(
                 .weight(1f)
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp)
-                .widthIn(max = 720.dp)
+                .widthIn(max = 960.dp)
         ) {
             // Interactive Flip Card Stage
             item {
@@ -370,7 +406,7 @@ fun FlashcardsScreen(
                                     ) {
                                         Text(
                                             text = if (!showingBack) {
-                                                "${activeCard.subject.label} • QUESTION (${safeIndex + 1}/${visibleCards.size})"
+                                                "${activeCard.subject.label} • ${activeCard.type.label} (${safeIndex + 1}/${visibleCards.size})"
                                             } else {
                                                 "${activeCard.subject.label} • ANSWER & FORMULA"
                                             },
@@ -544,7 +580,7 @@ fun FlashcardsScreen(
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "${card.subject.label} • ${if (card.isMastered) "Mastered" else "Practicing"}",
+                                text = "${card.subject.label} • ${card.type.label} • ${if (card.isMastered) "Mastered" else "Practicing"}",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = if (card.isMastered) EmeraldSuccess else MaterialTheme.colorScheme.primary
                             )
@@ -627,13 +663,21 @@ fun FlashcardsScreen(
         )
     }
 
-    // AI Generate 5 Flashcards Dialog
+    // Unlimited Topic & Type-Based AI Flashcard Generator Dialog
     if (showAiGenDialog) {
         AlertDialog(
             onDismissRequest = { showAiGenDialog = false },
-            title = { Text("AI Generate 5 Flashcards") },
+            title = { Text("AI Unlimited Flashcards") },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.verticalScroll(rememberScrollState())
+                ) {
+                    Text(
+                        text = "Subject",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         FlashcardSubject.entries.forEach { subj ->
                             FilterChip(
@@ -643,12 +687,54 @@ fun FlashcardsScreen(
                             )
                         }
                     }
+
+                    Text(
+                        text = "Card Type (টাইপ)",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        FlashcardType.entries.forEach { type ->
+                            FilterChip(
+                                selected = aiType == type,
+                                onClick = { aiType = type },
+                                label = { Text(type.label) }
+                            )
+                        }
+                    }
+
+                    Text(
+                        text = "Batch Size (Generate unlimited batches anytime)",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf(5, 10, 15, 20, 30).forEach { qty ->
+                            FilterChip(
+                                selected = aiCount == qty,
+                                onClick = { aiCount = qty },
+                                label = { Text("$qty Cards") }
+                            )
+                        }
+                    }
+
                     OutlinedTextField(
                         value = aiTopic,
                         onValueChange = { aiTopic = it },
-                        label = { Text("Chapter or Topic") },
-                        placeholder = { Text("e.g. জৈব রসায়ন অ্যালকিন বা Newton's Laws") },
-                        singleLine = true
+                        label = { Text("Chapter or Topic (টপিক)") },
+                        placeholder = { Text("e.g. ভেক্টর, জৈব রসায়ন, বা DNA Replication") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    OutlinedTextField(
+                        value = aiCustomInstr,
+                        onValueChange = { aiCustomInstr = it },
+                        label = { Text("Custom Prompt (কীভাবে বানাতে চান - ঐচ্ছিক)") },
+                        placeholder = { Text("e.g. মেডিকেল MCQ ট্র্যাপ + মনে রাখার টেকনিক দাও") },
+                        minLines = 2,
+                        maxLines = 3,
+                        modifier = Modifier.fillMaxWidth()
                     )
                 }
             },
@@ -658,14 +744,23 @@ fun FlashcardsScreen(
                         val topicClean = aiTopic.trim()
                         if (topicClean.isNotEmpty()) {
                             showAiGenDialog = false
-                            onGenerateAiCards(aiSubject, topicClean) { ok, msg ->
+                            onGenerateAiCards(
+                                aiSubject,
+                                aiType,
+                                topicClean,
+                                aiCount,
+                                aiCustomInstr.trim()
+                            ) { ok, msg ->
                                 aiStatusMsg = ok to msg
-                                if (ok) aiTopic = ""
+                                if (ok) {
+                                    aiTopic = ""
+                                    aiCustomInstr = ""
+                                }
                             }
                         }
                     },
                     enabled = aiTopic.isNotBlank()
-                ) { Text("Generate 5 Cards") }
+                ) { Text("Generate $aiCount Cards") }
             },
             dismissButton = {
                 TextButton(onClick = { showAiGenDialog = false }) { Text("Cancel") }

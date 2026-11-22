@@ -13,6 +13,7 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,6 +24,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -30,6 +32,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -37,6 +40,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Share
@@ -53,6 +57,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.PrimaryTabRow
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -74,6 +79,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.FileProvider
 import com.example.data.model.ImageGenUiState
 import com.example.data.model.VideoGenUiState
@@ -115,6 +122,7 @@ fun CreativeStudioScreen(
     var imagePrompt by remember(initialPrompt) { mutableStateOf(initialPrompt) }
     var videoPrompt by remember { mutableStateOf("") }
     var referenceBitmap by remember { mutableStateOf<Bitmap?>(null) }
+    var fullscreenBitmap by remember { mutableStateOf<Bitmap?>(null) }
 
     val refImageLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
@@ -183,8 +191,8 @@ fun CreativeStudioScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(16.dp)
-                .widthIn(max = 680.dp)
+                .padding(14.dp)
+                .widthIn(max = 960.dp)
         ) {
             if (selectedTab == 0) {
                 // Picture Generation Skill
@@ -330,15 +338,38 @@ fun CreativeStudioScreen(
                             shape = RoundedCornerShape(22.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Column(modifier = Modifier.padding(14.dp)) {
-                                Image(
-                                    bitmap = state.bitmap.asImageBitmap(),
-                                    contentDescription = state.prompt,
-                                    contentScale = ContentScale.Fit,
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Box(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .clip(RoundedCornerShape(16.dp))
-                                )
+                                        .clickable { fullscreenBitmap = state.bitmap }
+                                ) {
+                                    Image(
+                                        bitmap = state.bitmap.asImageBitmap(),
+                                        contentDescription = state.prompt,
+                                        contentScale = ContentScale.Fit,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .heightIn(min = 260.dp, max = 520.dp)
+                                    )
+                                    Surface(
+                                        color = Color.Black.copy(alpha = 0.55f),
+                                        shape = RoundedCornerShape(999.dp),
+                                        modifier = Modifier
+                                            .align(Alignment.BottomEnd)
+                                            .padding(10.dp)
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                                        ) {
+                                            Icon(Icons.Default.Fullscreen, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("Full View", style = MaterialTheme.typography.labelSmall, color = Color.White)
+                                        }
+                                    }
+                                }
                                 Spacer(modifier = Modifier.height(10.dp))
                                 Text(
                                     text = state.prompt,
@@ -398,7 +429,7 @@ fun CreativeStudioScreen(
                                 .padding(12.dp)
                         ) {
                             Text(
-                                text = "Gemini Veo Video Skill generates real MP4 clips using your Gemini API key (long-running operation, typically 45–120s).",
+                                text = "Study AI Veo Video Skill creates real MP4 video clips using your active API key (generation typically takes 45–120s).",
                                 style = MaterialTheme.typography.bodySmall
                             )
                         }
@@ -502,7 +533,7 @@ fun CreativeStudioScreen(
                                     },
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .height(220.dp)
+                                        .height(300.dp)
                                         .clip(RoundedCornerShape(14.dp))
                                 )
                                 Spacer(modifier = Modifier.height(10.dp))
@@ -534,13 +565,63 @@ fun CreativeStudioScreen(
                                     Button(onClick = onOpenApiConfig) {
                                         Icon(Icons.Default.Key, contentDescription = null, modifier = Modifier.size(16.dp))
                                         Spacer(modifier = Modifier.width(6.dp))
-                                        Text("Configure Gemini API Key")
+                                        Text("Configure Study AI API Key")
                                     }
                                 }
                             }
                         }
                     }
                     VideoGenUiState.Idle -> Unit
+                }
+            }
+        }
+    }
+
+    fullscreenBitmap?.let { bmp ->
+        Dialog(
+            onDismissRequest = { fullscreenBitmap = null },
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.94f))
+                    .statusBarsPadding()
+                    .navigationBarsPadding()
+                    .padding(16.dp)
+            ) {
+                Image(
+                    bitmap = bmp.asImageBitmap(),
+                    contentDescription = "Fullscreen Generated Picture",
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .align(Alignment.Center)
+                )
+                Row(
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .align(Alignment.TopCenter)
+                ) {
+                    Button(
+                        onClick = { shareBitmap(context, bmp) },
+                        shape = RoundedCornerShape(999.dp)
+                    ) {
+                        Icon(Icons.Default.Share, null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Share / Save")
+                    }
+                    IconButton(
+                        onClick = { fullscreenBitmap = null },
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(CircleShape)
+                            .background(Color.White.copy(alpha = 0.16f))
+                    ) {
+                        Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
+                    }
                 }
             }
         }

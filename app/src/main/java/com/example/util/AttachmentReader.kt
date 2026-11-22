@@ -3,7 +3,10 @@ package com.example.util
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Color
+import android.graphics.pdf.PdfRenderer
 import android.net.Uri
+import android.os.ParcelFileDescriptor
 import android.provider.OpenableColumns
 import com.example.data.model.AttachmentPayload
 import com.example.data.model.NotebookSource
@@ -12,12 +15,15 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.FileOutputStream
 import java.util.UUID
 
 object AttachmentReader {
     private const val MAX_IMAGE_DIM = 1600
-    private const val MAX_PDF_BYTES = 15 * 1024 * 1024
+    const val MAX_PDF_BYTES = 1024L * 1024L * 1024L // 1 GB maximum PDF upload
+    const val INLINE_PDF_THRESHOLD_BYTES = 15L * 1024L * 1024L // 15 MB inline cap
     private const val MAX_TEXT_CHARS = 80_000
+    private const val STREAM_BUFFER_BYTES = 64 * 1024
 
     private val TEXT_EXTENSIONS = listOf(
         ".txt", ".md", ".csv", ".json", ".py", ".js", ".ts", ".tsx", ".jsx",
@@ -69,18 +75,24 @@ object AttachmentReader {
                 val lower = name.lowercase()
 
                 if (mime == "application/pdf" || lower.endsWith(".pdf")) {
-                    val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                        ?: return@withContext Result.failure(IllegalStateException("Cannot open PDF file."))
-                    if (bytes.size > MAX_PDF_BYTES) {
-                        return@withContext Result.failure(
-                            IllegalArgumentException("PDF exceeds 15 MB limit.")
-                        )
+                    val dir = File(context.cacheDir, "chat_pdfs").apply { mkdirs() }
+                    val fileId = UUID.randomUUID().toString()
+                    val outFile = File(dir, "$fileId.pdf")
+                    val copiedBytes = streamUriToFileWithLimit(context, uri, outFile, MAX_PDF_BYTES)
+                        .getOrElse { err -> return@withContext Result.failure(err) }
+
+                    val inlineBytes = if (copiedBytes <= INLINE_PDF_THRESHOLD_BYTES) {
+                        outFile.readBytes()
+                    } else {
+                        ByteArray(0)
                     }
                     return@withContext Result.success(
                         AttachmentPayload.PdfAttachment(
-                            id = UUID.randomUUID().toString(),
+                            id = fileId,
                             name = name,
-                            bytes = bytes
+                            bytes = inlineBytes,
+                            localFilePath = outFile.absolutePath,
+                            sizeBytes = copiedBytes
                         )
                     )
                 }
@@ -120,24 +132,18 @@ object AttachmentReader {
                         IllegalArgumentException("Please pick a PDF file (.pdf).")
                     )
                 }
-                val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                    ?: return@withContext Result.failure(IllegalStateException("Cannot open selected PDF."))
-                if (bytes.isEmpty()) {
-                    return@withContext Result.failure(IllegalArgumentException("Selected PDF file is empty."))
-                }
-                if (bytes.size > MAX_PDF_BYTES) {
-                    return@withContext Result.failure(IllegalArgumentException("PDF exceeds 15 MB limit."))
-                }
                 val dir = File(context.filesDir, "notebook_sources").apply { mkdirs() }
                 val sourceId = "src_${UUID.randomUUID()}"
                 val outFile = File(dir, "$sourceId.pdf")
-                outFile.writeBytes(bytes)
+                val totalBytes = streamUriToFileWithLimit(context, uri, outFile, MAX_PDF_BYTES)
+                    .getOrElse { err -> return@withContext Result.failure(err) }
+
                 Result.success(
                     NotebookSource(
                         id = sourceId,
                         title = name,
                         type = NotebookSourceType.PDF,
-                        sizeBytes = bytes.size.toLong(),
+                        sizeBytes = totalBytes,
                         localFilePath = outFile.absolutePath
                     )
                 )
@@ -153,10 +159,13 @@ object AttachmentReader {
                     NotebookSourceType.PDF -> {
                         val file = File(src.localFilePath)
                         if (file.exists() && file.length() > 0L && file.length() <= MAX_PDF_BYTES) {
+                            val len = file.length()
                             AttachmentPayload.PdfAttachment(
                                 id = src.id,
                                 name = src.title,
-                                bytes = file.readBytes()
+                                bytes = if (len <= INLINE_PDF_THRESHOLD_BYTES) file.readBytes() else ByteArray(0),
+                                localFilePath = file.absolutePath,
+                                sizeBytes = len
                             )
                         } else null
                     }
@@ -173,9 +182,85 @@ object AttachmentReader {
             }
         }
 
+    fun renderSamplePdfPages(pdfPath: String, maxPages: Int = 8): List<Bitmap> {
+        val file = File(pdfPath)
+        if (!file.exists()) return emptyList()
+        val bitmaps = mutableListOf<Bitmap>()
+        var pfd: ParcelFileDescriptor? = null
+        var renderer: PdfRenderer? = null
+        try {
+            pfd = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
+            renderer = PdfRenderer(pfd)
+            val total = renderer.pageCount
+            if (total <= 0) return emptyList()
+            val indices = if (total <= maxPages) {
+                (0 until total).toList()
+            } else {
+                (0 until maxPages).map { i ->
+                    ((i.toFloat() / (maxPages - 1)) * (total - 1)).toInt().coerceIn(0, total - 1)
+                }.distinct()
+            }
+            for (idx in indices) {
+                renderer.openPage(idx).use { page ->
+                    val targetW = 1000
+                    val targetH = ((page.height.toFloat() / page.width.coerceAtLeast(1)) * targetW)
+                        .toInt().coerceIn(400, 1400)
+                    val bmp = Bitmap.createBitmap(targetW, targetH, Bitmap.Config.ARGB_8888)
+                    bmp.eraseColor(Color.WHITE)
+                    page.render(bmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                    bitmaps.add(bmp)
+                }
+            }
+        } catch (_: Exception) {
+        } finally {
+            runCatching { renderer?.close() }
+            runCatching { pfd?.close() }
+        }
+        return bitmaps
+    }
+
     fun deleteStoredNotebookSourceFile(source: NotebookSource) {
         if (source.localFilePath.isNotBlank()) {
             runCatching { File(source.localFilePath).delete() }
+        }
+    }
+
+    private fun streamUriToFileWithLimit(
+        context: Context,
+        uri: Uri,
+        destFile: File,
+        maxBytes: Long
+    ): Result<Long> {
+        return try {
+            val input = context.contentResolver.openInputStream(uri)
+                ?: return Result.failure(IllegalStateException("Cannot open selected PDF."))
+            var total = 0L
+            input.use { stream ->
+                FileOutputStream(destFile).use { out ->
+                    val buffer = ByteArray(STREAM_BUFFER_BYTES)
+                    while (true) {
+                        val read = stream.read(buffer)
+                        if (read == -1) break
+                        total += read
+                        if (total > maxBytes) {
+                            runCatching { destFile.delete() }
+                            return Result.failure(
+                                IllegalArgumentException("PDF exceeds maximum 1 GB size limit.")
+                            )
+                        }
+                        out.write(buffer, 0, read)
+                    }
+                    out.flush()
+                }
+            }
+            if (total <= 0L) {
+                runCatching { destFile.delete() }
+                return Result.failure(IllegalArgumentException("Selected PDF file is empty."))
+            }
+            Result.success(total)
+        } catch (e: Exception) {
+            runCatching { destFile.delete() }
+            Result.failure(e)
         }
     }
 

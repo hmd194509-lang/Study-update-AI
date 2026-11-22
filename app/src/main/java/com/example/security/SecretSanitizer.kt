@@ -2,6 +2,7 @@ package com.example.security
 
 object SecretSanitizer {
     private val GOOGLE_API_KEY_REGEX = Regex("AIza[0-9A-Za-z_\\-]{16,}")
+    private val AQ_TOKEN_REGEX = Regex("AQ\\.[0-9A-Za-z_.\\-]{16,}")
 
     fun maskApiKey(key: String?): String {
         val clean = key?.trim().orEmpty()
@@ -17,6 +18,7 @@ object SecretSanitizer {
             result = result.replace(cleanCustom, "[REDACTED_API_KEY]")
         }
         result = GOOGLE_API_KEY_REGEX.replace(result, "[REDACTED_API_KEY]")
+        result = AQ_TOKEN_REGEX.replace(result, "[REDACTED_API_KEY]")
         return result
     }
 

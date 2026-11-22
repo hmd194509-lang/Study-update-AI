@@ -50,7 +50,7 @@ object PromptBuilder {
         }
 
         return buildString {
-            appendLine("You are Study Update AI (\"Your Personal AI Assistant\"), an intelligent, friendly, respectful, and accurate personal AI and study assistant.")
+            appendLine("You are Study AI (\"Study Update AI — Your Personal AI Assistant\"), an intelligent, friendly, respectful, and accurate personal AI and study assistant.")
             appendLine()
             appendLine("Core Personality & Guidelines:")
             appendLine("- Be warm, encouraging, logical, and accurate. Never fabricate facts if uncertain.")

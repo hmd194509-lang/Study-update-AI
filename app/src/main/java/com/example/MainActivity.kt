@@ -184,6 +184,7 @@ private fun AuthenticatedWorkspace(
                 val databaseId = app.getString(R.string.firestore_database_id)
                 val db = FirebaseFirestore.getInstance(databaseId)
                 MainViewModel(
+                    appContext = app.applicationContext,
                     chatRepository = ChatRepository(db),
                     geminiRepository = GeminiRepository(),
                     settingsDataStore = settingsDataStore,
@@ -327,6 +328,7 @@ private fun AuthenticatedWorkspace(
                         },
                         onSelectMode = { viewModel.selectMode(it) },
                         onSendMessage = { text, mode -> viewModel.sendMessage(text, mode) },
+                        onSendImageInChat = { prompt -> viewModel.sendImageInChat(prompt) },
                         onStopStreaming = { viewModel.stopStreaming() },
                         onRegenerateLast = { viewModel.regenerateLastResponse() },
                         onAddAttachment = { viewModel.addAttachment(it) },
@@ -396,8 +398,8 @@ private fun AuthenticatedWorkspace(
                         onAddCustomCard = { subj, front, back, note ->
                             viewModel.addCustomFlashcard(subj, front, back, note)
                         },
-                        onGenerateAiCards = { subj, topic, cb ->
-                            viewModel.generateAiFlashcards(subj, topic, cb)
+                        onGenerateAiCards = { subj, type, topic, count, instr, cb ->
+                            viewModel.generateAiFlashcards(subj, type, topic, count, instr, cb)
                         },
                         onDeleteCard = { viewModel.deleteFlashcard(it) }
                     )

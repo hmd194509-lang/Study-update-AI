@@ -126,12 +126,12 @@ fun AdmissionDetailsScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp)
-                .widthIn(max = 720.dp)
+                .widthIn(max = 960.dp)
         ) {
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
-                placeholder = { Text("Search BUET, Medical, DU, GST, Agri...") },
+                placeholder = { Text("Search DU, BUET, Medical, GST, BRACU, NSU, RU, CU...") },
                 leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                 singleLine = true,
                 shape = RoundedCornerShape(14.dp),
@@ -169,7 +169,7 @@ fun AdmissionDetailsScreen(
                 .weight(1f)
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 6.dp)
-                .widthIn(max = 720.dp)
+                .widthIn(max = 960.dp)
         ) {
             item {
                 Surface(
@@ -178,7 +178,7 @@ fun AdmissionDetailsScreen(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
-                        text = "প্রতিটি বিশ্ববিদ্যালয়ের সম্ভাব্য সার্কুলার ও পরীক্ষার সময়সূচি এবং অফিশিয়াল রেজিস্ট্রেশন লিংক নিচে দেওয়া হয়েছে। চূড়ান্ত তারিখের জন্য সংশ্লিষ্ট পোর্টাল বাটন চাপুন।",
+                        text = "বাংলাদেশের সকল পাবলিক, মেডিকেল, ইঞ্জিনিয়ারিং, গুচ্ছ (GST), কৃষি, বিশেষায়িত ও শীর্ষ প্রাইভেট বিশ্ববিদ্যালয়ের সার্কুলার, পরীক্ষার তারিখ ও অফিশিয়াল রেজিস্ট্রেশন লিংক নিচে দেওয়া হয়েছে।",
                         style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier.padding(12.dp)
                     )
